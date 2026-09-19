@@ -98,6 +98,11 @@ describe("App identity bootstrap", () => {
     expect(requests.some((request) => request.url.endsWith("/users"))).toBe(
       true,
     );
+    const ticketRequest = requests.find((request) =>
+      request.url.includes("/tickets?"),
+    );
+    expect(ticketRequest?.url).toContain("sort_by=created_at");
+    expect(ticketRequest?.url).toContain("sort_direction=desc");
     const meRequest = requests.find((request) => request.url.endsWith("/me"));
     expect(meRequest?.headers.get("X-User-ID")).toBe(agent.id);
     expect(meRequest?.headers.get("X-User-Role")).toBeNull();

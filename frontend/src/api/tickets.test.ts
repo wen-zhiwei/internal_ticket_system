@@ -33,6 +33,8 @@ describe("ticket API client", () => {
       assigneeId: "unassigned",
       page: 2,
       pageSize: 10,
+      sortBy: "sla_due_at",
+      sortDirection: "asc",
     });
 
     const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -40,6 +42,8 @@ describe("ticket API client", () => {
     expect(url).toContain("q=%E7%99%BB%E5%BD%95+%E9%97%AE%E9%A2%98");
     expect(url).toContain("status=open");
     expect(url).toContain("assignee_id=unassigned");
+    expect(url).toContain("sort_by=sla_due_at");
+    expect(url).toContain("sort_direction=asc");
     expect(new Headers(options.headers).get("X-User-ID")).toBe("agent-id");
   });
 

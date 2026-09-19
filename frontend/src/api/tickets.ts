@@ -2,6 +2,9 @@ import { apiRequest } from "./client";
 
 export type TicketPriority = "urgent" | "high" | "normal" | "low";
 export type TicketStatus = "open" | "in_progress" | "resolved" | "closed";
+export type TicketSortField =
+  "created_at" | "updated_at" | "priority" | "sla_due_at";
+export type TicketSortDirection = "asc" | "desc";
 
 export type UserSummary = {
   id: string;
@@ -53,6 +56,8 @@ export type TicketListFilters = {
   assigneeId?: string;
   page?: number;
   pageSize?: number;
+  sortBy?: TicketSortField;
+  sortDirection?: TicketSortDirection;
 };
 
 export type CreateTicketInput = {
@@ -74,6 +79,8 @@ export function listTickets(
   if (filters.assigneeId) query.set("assignee_id", filters.assigneeId);
   query.set("page", String(filters.page ?? 1));
   query.set("page_size", String(filters.pageSize ?? 20));
+  if (filters.sortBy) query.set("sort_by", filters.sortBy);
+  if (filters.sortDirection) query.set("sort_direction", filters.sortDirection);
   return apiRequest<TicketListResponse>(`/tickets?${query.toString()}`, {
     userId,
   });

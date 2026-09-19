@@ -4,6 +4,8 @@ import {
   listTickets,
   type TicketListFilters,
   type TicketListResponse,
+  type TicketSortDirection,
+  type TicketSortField,
 } from "../api/tickets";
 import type { User } from "../api/users";
 import { PriorityBadge, StatusBadge } from "../components/TicketBadges";
@@ -19,6 +21,8 @@ type FilterDraft = {
   status: NonNullable<TicketListFilters["status"]>;
   priority: NonNullable<TicketListFilters["priority"]>;
   assigneeId: string;
+  sortBy: TicketSortField;
+  sortDirection: TicketSortDirection;
 };
 
 const initialDraft: FilterDraft = {
@@ -26,6 +30,8 @@ const initialDraft: FilterDraft = {
   status: "",
   priority: "",
   assigneeId: "",
+  sortBy: "created_at",
+  sortDirection: "desc",
 };
 
 const initialResult: TicketListResponse = {
@@ -47,6 +53,8 @@ export function TicketQueue({ currentUser, agents }: Props) {
   const [filters, setFilters] = useState<TicketListFilters>({
     page: 1,
     pageSize: 20,
+    sortBy: "created_at",
+    sortDirection: "desc",
   });
   const [result, setResult] = useState<TicketListResponse>(initialResult);
   const [isLoading, setIsLoading] = useState(true);
@@ -85,6 +93,8 @@ export function TicketQueue({ currentUser, agents }: Props) {
       status: draft.status,
       priority: draft.priority,
       assigneeId: draft.assigneeId,
+      sortBy: draft.sortBy,
+      sortDirection: draft.sortDirection,
       page: 1,
       pageSize: filters.pageSize,
     });
@@ -93,7 +103,12 @@ export function TicketQueue({ currentUser, agents }: Props) {
   function resetFilters() {
     startLoading();
     setDraft(initialDraft);
-    setFilters({ page: 1, pageSize: filters.pageSize });
+    setFilters({
+      page: 1,
+      pageSize: filters.pageSize,
+      sortBy: "created_at",
+      sortDirection: "desc",
+    });
   }
 
   function goToPage(page: number) {
@@ -189,6 +204,38 @@ export function TicketQueue({ currentUser, agents }: Props) {
             ))}
           </select>
         </label>
+        <label className="field">
+          <span>排序字段</span>
+          <select
+            value={draft.sortBy}
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                sortBy: event.target.value as TicketSortField,
+              }))
+            }
+          >
+            <option value="created_at">创建时间</option>
+            <option value="updated_at">更新时间</option>
+            <option value="priority">优先级</option>
+            <option value="sla_due_at">SLA 截止</option>
+          </select>
+        </label>
+        <label className="field">
+          <span>排序方向</span>
+          <select
+            value={draft.sortDirection}
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                sortDirection: event.target.value as TicketSortDirection,
+              }))
+            }
+          >
+            <option value="desc">倒序</option>
+            <option value="asc">正序</option>
+          </select>
+        </label>
         <div className="filter-actions">
           <button className="button primary" type="submit">
             查询
@@ -205,7 +252,17 @@ export function TicketQueue({ currentUser, agents }: Props) {
             <strong>
               {isLoading ? "正在加载…" : `${result.total} 条工单`}
             </strong>
-            <span>按创建时间倒序</span>
+            <span>
+              按
+              {filters.sortBy === "created_at"
+                ? "创建时间"
+                : filters.sortBy === "updated_at"
+                  ? "更新时间"
+                  : filters.sortBy === "priority"
+                    ? "优先级"
+                    : "SLA 截止"}
+              {filters.sortDirection === "asc" ? "正序" : "倒序"}
+            </span>
           </div>
           <label className="page-size">
             每页

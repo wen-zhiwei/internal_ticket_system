@@ -61,3 +61,33 @@ func TestAgentCanViewOnlyClaimableOrOwnTicket(t *testing.T) {
 		})
 	}
 }
+
+func TestTicketOrderByUsesOnlyWhitelistedExpressions(t *testing.T) {
+	tests := []struct {
+		name      string
+		filter    ListFilter
+		wantParts []string
+	}{
+		{name: "default created descending", filter: ListFilter{}, wantParts: []string{"t.created_at DESC", "t.id DESC"}},
+		{name: "updated ascending", filter: ListFilter{SortBy: SortUpdatedAt, SortDirection: SortAscending}, wantParts: []string{"t.updated_at ASC", "t.id DESC"}},
+		{name: "priority descending", filter: ListFilter{SortBy: SortPriority, SortDirection: SortDescending}, wantParts: []string{"CASE t.priority", "DESC"}},
+		{name: "sla ascending", filter: ListFilter{SortBy: SortSLADueAt, SortDirection: SortAscending}, wantParts: []string{"t.created_at + CASE t.priority", "ASC"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			order := ticketOrderBy(test.filter)
+			for _, part := range test.wantParts {
+				if !strings.Contains(order, part) {
+					t.Errorf("expected %q in %q", part, order)
+				}
+			}
+		})
+	}
+}
+
+func TestTicketOrderByFallsBackForUnknownValues(t *testing.T) {
+	order := ticketOrderBy(ListFilter{SortBy: SortField("customer_name"), SortDirection: SortDirection("sideways")})
+	if !strings.Contains(order, "t.created_at DESC") {
+		t.Fatalf("expected safe default order, got %s", order)
+	}
+}

@@ -2,7 +2,7 @@
 
 面向客服团队的轻量工单平台。客服 Agent 可以领取和处理工单，主管 Supervisor 可以分配、改派并查看全部工单。
 
-项目按 Feature 切片开发，当前已完成 **Feature 1：演示用户与 identity**、**Feature 2：工单基础模型、创建、列表、详情与 SLA 展示** 和 **Feature 3：领取、分配、改派、状态机、评论与操作历史**。
+项目按 Feature 切片开发，当前已完成 **Feature 1：演示用户与 identity**、**Feature 2：工单基础模型、创建、列表、详情与 SLA 展示**、**Feature 3：领取、分配、改派、状态机、评论与操作历史** 和 **Feature 4：工单队列排序**。
 
 ## 技术栈
 
@@ -70,7 +70,7 @@ API 的跨域响应只允许 `WEB_ORIGIN` 配置的精确 Origin；允许的请�
 - 两种角色都可以创建工单。
 - Supervisor 的分配、改派、评论与 Agent 的处理权限均由后端强制校验；前端隐藏按钮不是权限边界。
 
-## Feature 2 与 Feature 3 业务规则
+## Feature 2、Feature 3 与 Feature 4 业务规则
 
 ### 工单字段
 
@@ -135,6 +135,10 @@ SLA 从 `created_at` 计算，在读取工单时计算截止时间和逾期标�
 - `q=<标题或客户名称搜索>`
 - `page=<正整数>`，默认 1
 - `page_size=1..100`，默认 20
+- `sort_by=created_at|updated_at|priority|sla_due_at`，可选；默认按创建时间倒序
+- `sort_direction=asc|desc`，可选；默认倒序
+
+排序字段由后端白名单映射为固定 SQL 表达式，不接受任意列名或 SQL 片段。优先级排序顺序为 `urgent`、`high`、`normal`、`low`；所有排序都使用工单 ID 作为稳定的最终排序键。
 
 列表响应包含 `items`、`page`、`page_size`、`total`、`total_pages`。每项包含 SLA 截止时间和 `overdue` 计算结果。
 
@@ -275,7 +279,7 @@ go build ./...
 - [x] `GET /api/users`、`GET /api/me` 与数据库角色读取
 - [x] 当前用户切换和 localStorage 记忆
 - [x] 工单表、评论表、操作历史表、约束、索引和四张演示工单
-- [x] `GET /api/tickets`：角色可见性、状态/优先级/处理人筛选、标题/客户搜索、分页
+- [x] `GET /api/tickets`：角色可见性、状态/优先级/处理人筛选、标题/客户搜索、分页和白名单排序
 - [x] `POST /api/tickets`：输入校验、默认状态/处理人、创建历史事务一致性
 - [x] `GET /api/tickets/{id}`：详情、操作历史、404/403 错误语义
 - [x] SLA 截止时间和逾期状态的查询时计算

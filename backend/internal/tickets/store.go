@@ -72,7 +72,7 @@ func (s *PGStore) List(ctx context.Context, actor users.User, filter ListFilter)
 	queryArgs := append(append([]any{}, args...), filter.PageSize, (filter.Page-1)*filter.PageSize)
 	rows, err := s.pool.Query(
 		ctx,
-		ticketSelect+whereSQL+" ORDER BY t.created_at DESC, t.id DESC LIMIT "+limitPlaceholder+" OFFSET "+offsetPlaceholder,
+		ticketSelect+whereSQL+ticketOrderBy(filter)+" LIMIT "+limitPlaceholder+" OFFSET "+offsetPlaceholder,
 		queryArgs...,
 	)
 	if err != nil {
@@ -103,6 +103,26 @@ func (s *PGStore) List(ctx context.Context, actor users.User, filter ListFilter)
 		Total:      total,
 		TotalPages: totalPages,
 	}, nil
+}
+
+func ticketOrderBy(filter ListFilter) string {
+	direction := "DESC"
+	if filter.SortDirection == SortAscending {
+		direction = "ASC"
+	}
+
+	switch filter.SortBy {
+	case SortUpdatedAt:
+		return " ORDER BY t.updated_at " + direction + ", t.id DESC"
+	case SortPriority:
+		return " ORDER BY CASE t.priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'normal' THEN 3 WHEN 'low' THEN 4 END " + direction + ", t.updated_at DESC, t.id DESC"
+	case SortSLADueAt:
+		return " ORDER BY (t.created_at + CASE t.priority WHEN 'urgent' THEN INTERVAL '2 hours' WHEN 'high' THEN INTERVAL '8 hours' WHEN 'normal' THEN INTERVAL '24 hours' WHEN 'low' THEN INTERVAL '72 hours' END) " + direction + ", t.id DESC"
+	case SortCreatedAt:
+		return " ORDER BY t.created_at " + direction + ", t.id DESC"
+	default:
+		return " ORDER BY t.created_at " + direction + ", t.id DESC"
+	}
 }
 
 func listConditions(actor users.User, filter ListFilter) ([]string, []any) {

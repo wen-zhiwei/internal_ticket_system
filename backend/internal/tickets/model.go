@@ -125,13 +125,31 @@ func (input CommentInput) NormalizeAndValidate() (CommentInput, error) {
 	return input, nil
 }
 
+type SortField string
+
+const (
+	SortCreatedAt SortField = "created_at"
+	SortUpdatedAt SortField = "updated_at"
+	SortPriority  SortField = "priority"
+	SortSLADueAt  SortField = "sla_due_at"
+)
+
+type SortDirection string
+
+const (
+	SortAscending  SortDirection = "asc"
+	SortDescending SortDirection = "desc"
+)
+
 type ListFilter struct {
-	Status     *Status
-	Priority   *Priority
-	AssigneeID string
-	Search     string
-	Page       int
-	PageSize   int
+	Status        *Status
+	Priority      *Priority
+	AssigneeID    string
+	Search        string
+	Page          int
+	PageSize      int
+	SortBy        SortField
+	SortDirection SortDirection
 }
 
 type ListResult struct {
@@ -167,6 +185,24 @@ func ParseStatus(value string) (Status, error) {
 		return Status(value), nil
 	default:
 		return "", errors.New("invalid status")
+	}
+}
+
+func ParseSortField(value string) (SortField, error) {
+	switch SortField(value) {
+	case SortCreatedAt, SortUpdatedAt, SortPriority, SortSLADueAt:
+		return SortField(value), nil
+	default:
+		return "", errors.New("invalid sort field")
+	}
+}
+
+func ParseSortDirection(value string) (SortDirection, error) {
+	switch SortDirection(value) {
+	case SortAscending, SortDescending:
+		return SortDirection(value), nil
+	default:
+		return "", errors.New("invalid sort direction")
 	}
 }
 

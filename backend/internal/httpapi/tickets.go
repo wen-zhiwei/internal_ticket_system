@@ -130,6 +130,18 @@ func parseTicketListFilter(r *http.Request) (tickets.ListFilter, error) {
 			return tickets.ListFilter{}, errors.New("page_size 必须是 1 到 100 的整数")
 		}
 	}
+	if rawSortBy := strings.TrimSpace(query.Get("sort_by")); rawSortBy != "" {
+		filter.SortBy, err = tickets.ParseSortField(rawSortBy)
+		if err != nil {
+			return tickets.ListFilter{}, errors.New("sort_by 必须是 created_at、updated_at、priority 或 sla_due_at")
+		}
+	}
+	if rawSortDirection := strings.TrimSpace(query.Get("sort_direction")); rawSortDirection != "" {
+		filter.SortDirection, err = tickets.ParseSortDirection(rawSortDirection)
+		if err != nil {
+			return tickets.ListFilter{}, errors.New("sort_direction 必须是 asc 或 desc")
+		}
+	}
 	return filter, nil
 }
 

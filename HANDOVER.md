@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-这是一个面向客服团队的轻量工单平台。项目按 Feature 切片开发，当前已完成 Feature 1（演示用户/角色/当前用户切换）、Feature 2（工单基础模型、创建、列表、详情、SLA）和 Feature 3（领取、分配、改派、状态机、评论、操作历史）。
+这是一个面向客服团队的轻量工单平台。项目按 Feature 切片开发，当前已完成 Feature 1（演示用户/角色/当前用户切换）、Feature 2（工单基础模型、创建、列表、详情、SLA）、Feature 3（领取、分配、改派、状态机、评论、操作历史）和 Feature 4（工单队列排序）。
 
 ## 技术选型与架构
 
@@ -22,7 +22,7 @@
 - [x] 工单表、事件表、约束、索引、演示工单
 - [x] 工单创建、列表、详情 API
 - [x] Agent 最小可见范围与 Supervisor 全量可见范围
-- [x] 状态/优先级/处理人筛选、标题/客户搜索、分页
+- [x] 状态/优先级/处理人筛选、标题/客户搜索、分页和白名单排序
 - [x] SLA 查询计算与逾期标记
 - [x] 队列、新建、详情页面和前端 API 测试
 - [x] 领取、分配、改派、状态流转、评论
@@ -36,6 +36,7 @@
 - 工单详情中返回创建人、当前处理人、SLA 截止时间、逾期标记和按时间升序排列的操作历史。
 - SLA：urgent 2h、high 8h、normal 24h、low 72h。`resolved`/`closed` 不标记逾期。
 - `closed` 为终态；领取/分配/改派/状态机/评论已接入真实 API，业务变更和事件/评论写入使用同一事务。
+- 队列排序支持创建时间、更新时间、优先级和 SLA 截止时间；字段与方向由后端白名单校验，默认创建时间倒序，并使用工单 ID 稳定排序。
 
 ## 启动方式
 
@@ -82,7 +83,7 @@ make frontend
 - `backend/internal/tickets/store.go`：列表、详情、创建、权限范围、事务。
 - `backend/internal/tickets/model_test.go`、`store_test.go`：输入、UUID、SLA、可见范围测试。
 - `backend/internal/httpapi/tickets.go`、`tickets_test.go`：API 路由、参数、错误映射测试。
-- `frontend/src/pages/TicketQueue.tsx`：队列筛选与分页。
+- `frontend/src/pages/TicketQueue.tsx`：队列筛选、排序与分页。
 - `frontend/src/pages/NewTicketPage.tsx`：创建表单。
 - `frontend/src/pages/TicketDetailPage.tsx`：详情和历史。
 - `.ai/SESSION.md`：持续恢复点（不进 Git）。

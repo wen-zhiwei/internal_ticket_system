@@ -88,7 +88,7 @@ func TestListTicketsUsesDatabaseActorAndParsesFilters(t *testing.T) {
 	handler := NewHandler("http://localhost:5173", fakeUserStore{items: testUsers()}, store)
 	request := httptest.NewRequest(
 		http.MethodGet,
-		"/api/tickets?status=open&priority=high&assignee_id=unassigned&q=%E7%99%BB%E5%BD%95&page=2&page_size=10",
+		"/api/tickets?status=open&priority=high&assignee_id=unassigned&q=%E7%99%BB%E5%BD%95&page=2&page_size=10&sort_by=sla_due_at&sort_direction=asc",
 		nil,
 	)
 	request.Header.Set("X-User-ID", "agent-001")
@@ -108,6 +108,33 @@ func TestListTicketsUsesDatabaseActorAndParsesFilters(t *testing.T) {
 	}
 	if store.lastFilter.Page != 2 || store.lastFilter.PageSize != 10 || store.lastFilter.Search != "登录" {
 		t.Fatalf("unexpected parsed filter: %#v", store.lastFilter)
+	}
+	if store.lastFilter.SortBy != tickets.SortSLADueAt || store.lastFilter.SortDirection != tickets.SortAscending {
+		t.Fatalf("unexpected sort filter: %#v", store.lastFilter)
+	}
+}
+
+func TestListTicketsRejectsInvalidSortFilters(t *testing.T) {
+	for _, query := range []string{
+		"sort_by=customer_name",
+		"sort_direction=sideways",
+	} {
+		t.Run(query, func(t *testing.T) {
+			store := &fakeTicketStore{}
+			handler := NewHandler("http://localhost:5173", fakeUserStore{items: testUsers()}, store)
+			request := httptest.NewRequest(http.MethodGet, "/api/tickets?"+query, nil)
+			request.Header.Set("X-User-ID", "agent-001")
+			response := httptest.NewRecorder()
+
+			handler.ServeHTTP(response, request)
+
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d", response.Code)
+			}
+			if store.listCalls != 0 {
+				t.Fatal("ticket store must not be called for invalid sort filters")
+			}
+		})
 	}
 }
 

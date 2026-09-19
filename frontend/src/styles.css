@@ -448,7 +448,7 @@ h3 {
 
 .filter-panel {
   display: grid;
-  grid-template-columns: minmax(230px, 1.7fr) repeat(3, minmax(130px, 1fr)) auto;
+  grid-template-columns: minmax(230px, 1.7fr) repeat(5, minmax(110px, 1fr)) auto;
   align-items: end;
   gap: 12px;
   padding: 17px 18px;

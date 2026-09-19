@@ -36,6 +36,21 @@ func TestCreateInputRejectsMissingAndInvalidFields(t *testing.T) {
 	}
 }
 
+func TestParseSortOptions(t *testing.T) {
+	if field, err := ParseSortField("sla_due_at"); err != nil || field != SortSLADueAt {
+		t.Fatalf("expected sla_due_at, got %q, %v", field, err)
+	}
+	if direction, err := ParseSortDirection("asc"); err != nil || direction != SortAscending {
+		t.Fatalf("expected asc, got %q, %v", direction, err)
+	}
+	if _, err := ParseSortField("customer_name"); err == nil {
+		t.Fatal("expected unsupported sort field to fail")
+	}
+	if _, err := ParseSortDirection("sideways"); err == nil {
+		t.Fatal("expected unsupported sort direction to fail")
+	}
+}
+
 func TestParseStatusAndPriority(t *testing.T) {
 	if _, err := ParseStatus("waiting"); err == nil {
 		t.Fatal("expected invalid status to fail")

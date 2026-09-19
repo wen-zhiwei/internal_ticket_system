@@ -1,0 +1,11 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: internal_ticket_system
+      POSTGRES_USER: internal_ticket_system
+      POSTGRES_PASSWORD: internal_ticket_system
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./.pgdata:/var/lib/postgresql/data

@@ -21,3 +21,7 @@ backend/coverage.out
 
 # Local database volumes
 .pgdata/
+
+# Local AI session state
+.ai/
+SESSION.md

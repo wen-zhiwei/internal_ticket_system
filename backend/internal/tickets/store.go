@@ -16,8 +16,10 @@ import (
 
 type Store interface {
 	List(ctx context.Context, actor users.User, filter ListFilter) (ListResult, error)
+	Overview(ctx context.Context, actor users.User) (Overview, error)
 	Get(ctx context.Context, actor users.User, id string) (Detail, error)
 	Create(ctx context.Context, actor users.User, input CreateInput) (Detail, error)
+	Update(ctx context.Context, actor users.User, id string, input UpdateInput) (Detail, error)
 	Claim(ctx context.Context, actor users.User, id string) (Detail, error)
 	Assign(ctx context.Context, actor users.User, id string, input AssignmentInput) (Detail, error)
 	Reassign(ctx context.Context, actor users.User, id string, input AssignmentInput) (Detail, error)
@@ -49,8 +51,10 @@ const ticketSelect = `
 		t.status,
 		COALESCE(assignee.id::text, ''),
 		COALESCE(assignee.name, ''),
+		COALESCE(assignee.team, ''),
 		creator.id::text,
 		creator.name,
+		creator.team,
 		t.created_at,
 		t.updated_at
 	FROM tickets AS t
@@ -137,8 +141,13 @@ func listConditions(actor users.User, filter ListFilter) ([]string, []any) {
 	if actor.Role != users.RoleSupervisor {
 		add("(t.assignee_id::text = ? OR (t.status = 'open' AND t.assignee_id IS NULL))", actor.ID)
 	}
-	if filter.Status != nil {
+	if filter.Pending {
+		where = append(where, "t.status IN ('open', 'in_progress')")
+	} else if filter.Status != nil {
 		add("t.status = ?", string(*filter.Status))
+	}
+	if filter.Overdue {
+		where = append(where, "t.status NOT IN ('resolved', 'closed') AND t.created_at + CASE t.priority WHEN 'urgent' THEN INTERVAL '2 hours' WHEN 'high' THEN INTERVAL '8 hours' WHEN 'normal' THEN INTERVAL '24 hours' WHEN 'low' THEN INTERVAL '72 hours' END < NOW()")
 	}
 	if filter.Priority != nil {
 		add("t.priority = ?", string(*filter.Priority))
@@ -152,6 +161,48 @@ func listConditions(actor users.User, filter ListFilter) ([]string, []any) {
 		add("(t.title ILIKE ? OR t.customer_name ILIKE ?)", "%"+filter.Search+"%")
 	}
 	return where, args
+}
+
+func (s *PGStore) Overview(ctx context.Context, actor users.User) (Overview, error) {
+	where, args := listConditions(actor, ListFilter{})
+	whereSQL := " WHERE " + strings.Join(where, " AND ")
+	var overview Overview
+	var openCount, inProgressCount, resolvedCount, closedCount int
+	err := s.pool.QueryRow(ctx, `
+		SELECT
+			COUNT(*),
+			COUNT(*) FILTER (WHERE t.status IN ('open', 'in_progress')),
+			COUNT(*) FILTER (WHERE t.priority = 'urgent'),
+			COUNT(*) FILTER (WHERE t.status NOT IN ('resolved', 'closed') AND t.created_at + CASE t.priority
+				WHEN 'urgent' THEN INTERVAL '2 hours'
+				WHEN 'high' THEN INTERVAL '8 hours'
+				WHEN 'normal' THEN INTERVAL '24 hours'
+				WHEN 'low' THEN INTERVAL '72 hours'
+			END < NOW()),
+			COUNT(*) FILTER (WHERE t.status = 'open'),
+			COUNT(*) FILTER (WHERE t.status = 'in_progress'),
+			COUNT(*) FILTER (WHERE t.status = 'resolved'),
+			COUNT(*) FILTER (WHERE t.status = 'closed')
+		FROM tickets AS t`+whereSQL, args...).Scan(
+		&overview.Total,
+		&overview.Pending,
+		&overview.Urgent,
+		&overview.SLAAttention,
+		&openCount,
+		&inProgressCount,
+		&resolvedCount,
+		&closedCount,
+	)
+	if err != nil {
+		return Overview{}, err
+	}
+	overview.ByStatus = map[string]int{
+		string(StatusOpen):       openCount,
+		string(StatusInProgress): inProgressCount,
+		string(StatusResolved):   resolvedCount,
+		string(StatusClosed):     closedCount,
+	}
+	return overview, nil
 }
 
 func (s *PGStore) Get(ctx context.Context, actor users.User, id string) (Detail, error) {
@@ -206,6 +257,48 @@ func (s *PGStore) Create(ctx context.Context, actor users.User, input CreateInpu
 		return Detail{}, err
 	}
 	return detail, nil
+}
+
+func (s *PGStore) Update(ctx context.Context, actor users.User, id string, input UpdateInput) (Detail, error) {
+	normalized, err := input.NormalizeAndValidate()
+	if err != nil {
+		return Detail{}, err
+	}
+	if actor.Role != users.RoleAgent && actor.Role != users.RoleSupervisor {
+		return Detail{}, ErrForbidden
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Detail{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	state, err := lockTicketState(ctx, tx, id)
+	if err != nil {
+		return Detail{}, err
+	}
+	if state.Status == StatusClosed {
+		return Detail{}, ErrTicketClosed
+	}
+	if actor.Role == users.RoleAgent && state.AssigneeID != actor.ID {
+		return Detail{}, ErrForbidden
+	}
+
+	_, err = tx.Exec(ctx, `
+		UPDATE tickets
+		SET title = $1, description = $2, customer_name = $3,
+			customer_contact = $4, priority = $5
+		WHERE id = $6
+	`, normalized.Title, normalized.Description, normalized.CustomerName,
+		normalized.CustomerContact, string(normalized.Priority), id)
+	if err != nil {
+		return Detail{}, err
+	}
+	if err := insertEvent(ctx, tx, id, actor.ID, "updated", "更新了工单信息"); err != nil {
+		return Detail{}, err
+	}
+	return commitDetail(ctx, tx, actor, id)
 }
 
 // Claim uses one conditional UPDATE. PostgreSQL row locking makes concurrent
@@ -422,10 +515,10 @@ func getAgent(ctx context.Context, tx pgx.Tx, id string) (UserSummary, error) {
 	var summary UserSummary
 	var role users.Role
 	err := tx.QueryRow(ctx, `
-		SELECT id::text, name, role
+		SELECT id::text, name, team, role
 		FROM users
 		WHERE id::text = $1
-	`, id).Scan(&summary.ID, &summary.Name, &role)
+	`, id).Scan(&summary.ID, &summary.Name, &summary.Team, &role)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return UserSummary{}, ErrAssigneeNotFound
 	}
@@ -440,7 +533,7 @@ func getAgent(ctx context.Context, tx pgx.Tx, id string) (UserSummary, error) {
 
 func getUserSummary(ctx context.Context, tx pgx.Tx, id string) (UserSummary, error) {
 	var summary UserSummary
-	if err := tx.QueryRow(ctx, `SELECT id::text, name FROM users WHERE id::text = $1`, id).Scan(&summary.ID, &summary.Name); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT id::text, name, team FROM users WHERE id::text = $1`, id).Scan(&summary.ID, &summary.Name, &summary.Team); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return UserSummary{}, ErrNotFound
 		}
@@ -552,6 +645,7 @@ func scanTicket(row scanner) (Ticket, error) {
 	var ticket Ticket
 	var assigneeID string
 	var assigneeName string
+	var assigneeTeam string
 	if err := row.Scan(
 		&ticket.ID,
 		&ticket.Title,
@@ -562,15 +656,17 @@ func scanTicket(row scanner) (Ticket, error) {
 		&ticket.Status,
 		&assigneeID,
 		&assigneeName,
+		&assigneeTeam,
 		&ticket.CreatedBy.ID,
 		&ticket.CreatedBy.Name,
+		&ticket.CreatedBy.Team,
 		&ticket.CreatedAt,
 		&ticket.UpdatedAt,
 	); err != nil {
 		return Ticket{}, err
 	}
 	if assigneeID != "" {
-		ticket.Assignee = &UserSummary{ID: assigneeID, Name: assigneeName}
+		ticket.Assignee = &UserSummary{ID: assigneeID, Name: assigneeName, Team: assigneeTeam}
 	}
 	return applySLA(ticket, time.Now()), nil
 }

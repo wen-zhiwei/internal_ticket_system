@@ -34,11 +34,13 @@ var (
 	ErrAssigneeNotFound  = errors.New("assignee not found")
 	ErrAssigneeNotAgent  = errors.New("assignee must be an agent")
 	ErrInvalidTransition = errors.New("invalid status transition")
+	ErrTicketClosed      = errors.New("closed ticket cannot be edited")
 )
 
 type UserSummary struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+	Team string `json:"team"`
 }
 
 type Ticket struct {
@@ -85,6 +87,8 @@ type CreateInput struct {
 	CustomerContact string   `json:"customer_contact"`
 	Priority        Priority `json:"priority"`
 }
+
+type UpdateInput CreateInput
 
 type AssignmentInput struct {
 	AssigneeID string `json:"assignee_id"`
@@ -143,6 +147,8 @@ const (
 
 type ListFilter struct {
 	Status        *Status
+	Pending       bool
+	Overdue       bool
 	Priority      *Priority
 	AssigneeID    string
 	Search        string
@@ -158,6 +164,14 @@ type ListResult struct {
 	PageSize   int      `json:"page_size"`
 	Total      int      `json:"total"`
 	TotalPages int      `json:"total_pages"`
+}
+
+type Overview struct {
+	Total        int            `json:"total"`
+	Pending      int            `json:"pending"`
+	Urgent       int            `json:"urgent"`
+	SLAAttention int            `json:"sla_attention"`
+	ByStatus     map[string]int `json:"by_status"`
 }
 
 type ValidationErrors map[string]string
@@ -260,6 +274,11 @@ func (input CreateInput) NormalizeAndValidate() (CreateInput, error) {
 		return CreateInput{}, errorsByField
 	}
 	return input, nil
+}
+
+func (input UpdateInput) NormalizeAndValidate() (UpdateInput, error) {
+	normalized, err := CreateInput(input).NormalizeAndValidate()
+	return UpdateInput(normalized), err
 }
 
 func validateRequiredLength(result ValidationErrors, field, value string, maximum int) {

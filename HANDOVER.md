@@ -2,24 +2,28 @@
 
 ## 项目概述
 
-这是一个面向客服团队的轻量工单平台。项目按 Feature 切片开发，当前已完成 Feature 1（演示用户/角色/当前用户切换）、Feature 2（工单基础模型、创建、列表、详情、SLA）、Feature 3（领取、分配、改派、状态机、评论、操作历史）和 Feature 4（工单队列排序）。
+这是一个面向滴滴自动驾驶客服团队的轻量工单平台。项目按 Feature 切片开发，当前已完成 Feature 1（演示用户/角色/当前用户切换）、Feature 2（工单基础模型、创建、列表、详情、SLA）、Feature 3（领取、分配、改派、状态机、评论、操作历史）、Feature 4（工单队列排序）、Feature 5（编辑已创建工单）、Feature 6/7（首页问候、快捷视图、查询标签、简单记忆）和 Feature 8（AI 助手基础能力）。
 
 ## 技术选型与架构
 
 - 前端：React + TypeScript + Vite；目录 `frontend/`。
 - 后端：Go + `net/http`；目录 `backend/`。
 - 数据库：PostgreSQL；访问库为 `github.com/jackc/pgx/v5`。
-- 迁移：`db/migrations/0001_users.sql`、`db/migrations/0002_tickets.sql`、`db/migrations/0003_ticket_comments.sql`，由 `make db-migrate` 按顺序执行。
+- 迁移：`db/migrations/0001_users.sql`、`db/migrations/0002_tickets.sql`、`db/migrations/0003_ticket_comments.sql`、`db/migrations/0004_ticket_updates.sql`、`db/migrations/0005_autonomous_driving_demo.sql`、`db/migrations/0006_workflow_collaboration_demo.sql`，由 `make db-migrate` 按顺序执行。
 - 前端数据必须来自 Go API，业务数据持久化 PostgreSQL。
 - 当前 identity 使用 `X-User-ID`，后端从数据库读取角色，不信任客户端自报角色。
 
 ## 当前进度
 
+- 自动驾驶客服场景已统一：页面、助手文案和演示工单围绕 Robotaxi 订单、接驾、自动驾驶服务和安全员问题。
+- 已增加 6 张工作流与协作演示工单，覆盖待领取、处理中、已解决、已关闭、分配、改派、评论和操作历史。
+- 助手完整草稿确认后会调用已有创建 API，创建成功后切换到全部工单并刷新列表。
+
 - [x] 项目初始化、目录、环境变量、启动/测试/构建命令
 - [x] 用户表、角色约束和三名演示用户
 - [x] `GET /api/users`、`GET /api/me`
 - [x] 当前用户切换与后端角色确认
-- [x] 工单表、事件表、约束、索引、演示工单
+- [x] 工单表、事件表、约束、索引、自动驾驶工作流与协作演示工单
 - [x] 工单创建、列表、详情 API
 - [x] Agent 最小可见范围与 Supervisor 全量可见范围
 - [x] 状态/优先级/处理人筛选、标题/客户搜索、分页和白名单排序
@@ -27,7 +31,11 @@
 - [x] 队列、新建、详情页面和前端 API 测试
 - [x] 领取、分配、改派、状态流转、评论
 - [x] 状态机单元测试和可选 PostgreSQL 并发领取测试
-- [ ] 在具备 Go/PostgreSQL 的环境执行完整后端验证
+- [x] 已创建工单编辑、权限/状态校验、更新事件和前端编辑表单
+- [x] 首页问候、快捷视图、查询标签和按用户隔离的简单记忆
+- [x] AI Assistant API、OpenAI-compatible Tool 调用、工单卡片、草稿预填充和前端助手浮窗
+- [ ] 助手服务端多轮会话、确认操作、批量修改和幂等防重
+- [ ] 在具备 PostgreSQL 的环境执行迁移和数据库集成验证
 
 ## Feature 2 规则与实现
 
@@ -37,6 +45,7 @@
 - SLA：urgent 2h、high 8h、normal 24h、low 72h。`resolved`/`closed` 不标记逾期。
 - `closed` 为终态；领取/分配/改派/状态机/评论已接入真实 API，业务变更和事件/评论写入使用同一事务。
 - 队列排序支持创建时间、更新时间、优先级和 SLA 截止时间；字段与方向由后端白名单校验，默认创建时间倒序，并使用工单 ID 稳定排序。
+- 编辑工单：Supervisor 可编辑全部可见工单，Agent 只能编辑自己负责的工单；`closed` 禁止编辑；字段更新和 `updated` 事件同事务提交。
 
 ## 启动方式
 
@@ -74,8 +83,8 @@ make frontend
 - `make test`：后端步骤因 `/bin/sh: go: command not found` 退出，未进入前端步骤。
 - `make build`：后端步骤因 `/bin/sh: go: command not found` 退出，未进入前端步骤。
 - `make format-check`：Go 检查因 `gofmt: No such file or directory` 失败，前端 Prettier 检查通过。
-- `make db-migrate`：本机没有 `psql`，Docker PostgreSQL 未运行；Docker daemon 输出 `Cannot connect to the Docker daemon at unix:///var/run/docker.sock`。
-- 后端 `gofmt`、`go test`、`go vet`、`go build` 和 PostgreSQL 集成验证：未确认前不应写成已通过。
+- `make db-migrate`：本机 PostgreSQL `localhost:5432` 无响应，Docker daemon 不可用。
+- 2026-09-20：`make format-check`、`make lint`、`make test`、`make build` 和 `git diff --check` 已通过；数据库迁移和 PostgreSQL 集成验证仍未执行。
 
 ## 相关文件
 
@@ -86,4 +95,6 @@ make frontend
 - `frontend/src/pages/TicketQueue.tsx`：队列筛选、排序与分页。
 - `frontend/src/pages/NewTicketPage.tsx`：创建表单。
 - `frontend/src/pages/TicketDetailPage.tsx`：详情和历史。
+- `backend/internal/assistant/`：AI Tool、模型适配器和助手业务服务。
+- `frontend/src/components/AssistantWidget.tsx`：右下角助手浮窗。
 - `.ai/SESSION.md`：持续恢复点（不进 Git）。

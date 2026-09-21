@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>用 Codex 做一个客服协作工作台｜开发记录</title>
+  <meta name="description" content="客服协作工作台的 Codex 开发过程、需求拆解、AI 工具架构、操作日志与验证记录。">
+  <style>
+    :root {
+      --ink: #172033;
+      --muted: #617087;
+      --paper: #f7f8fb;
+      --white: #ffffff;
+      --line: #dbe1ea;
+      --blue: #1d4ed8;
+      --blue-deep: #12327f;
+      --sky: #eaf1ff;
+      --yellow: #f4c84a;
+      --orange: #e8733a;
+      --green: #18794e;
+      --red: #bd3d3d;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; color: var(--ink); background: var(--paper); font-family: var(--sans); line-height: 1.65; }
+    a { color: inherit; }
+    button { font: inherit; }
+    .shell { display: grid; grid-template-columns: 242px minmax(0, 1fr); min-height: 100vh; }
+    .rail { position: sticky; top: 0; height: 100vh; padding: 28px 20px; color: #eef4ff; background: var(--blue-deep); display: flex; flex-direction: column; justify-content: space-between; }
+    .brand-mark { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: -.03em; }
+    .brand-square { width: 28px; height: 28px; display: grid; place-items: center; color: var(--blue-deep); background: var(--yellow); font-size: 14px; font-weight: 900; }
+    .brand-sub { margin: 12px 0 28px; color: #aebfe9; font-size: 12px; line-height: 1.55; }
+    .nav-label { margin: 0 0 9px; color: #aebfe9; font-size: 11px; letter-spacing: .12em; }
+    .nav { display: grid; gap: 4px; }
+    .nav a { display: block; padding: 8px 10px; color: #dfe8ff; text-decoration: none; font-size: 13px; border-left: 2px solid transparent; }
+    .nav a:hover, .nav a:focus-visible { color: #fff; background: rgba(255,255,255,.09); border-left-color: var(--yellow); outline: none; }
+    .rail-note { padding-top: 20px; color: #b5c5e5; font-size: 11px; border-top: 1px solid rgba(255,255,255,.18); }
+    .main { min-width: 0; }
+    .topbar { display: flex; justify-content: flex-end; gap: 10px; padding: 18px clamp(22px, 5vw, 76px) 0; }
+    .action { border: 1px solid var(--line); padding: 8px 12px; color: var(--blue-deep); background: var(--white); cursor: pointer; font-size: 12px; font-weight: 700; }
+    .action:hover, .action:focus-visible { border-color: var(--blue); outline: 3px solid rgba(29,78,216,.14); }
+    .hero { padding: 60px clamp(22px, 7vw, 116px) 66px; background: var(--white); border-bottom: 1px solid var(--line); }
+    .eyebrow { display: flex; align-items: center; gap: 10px; color: var(--orange); font-size: 12px; font-weight: 800; letter-spacing: .08em; }
+    .eyebrow::before { content: ""; display: block; width: 28px; height: 3px; background: var(--yellow); }
+    h1 { max-width: 820px; margin: 18px 0 12px; color: var(--blue-deep); font-size: clamp(38px, 6vw, 76px); line-height: 1.06; letter-spacing: -.065em; }
+    .hero-lede { max-width: 680px; margin: 0; color: var(--muted); font-size: clamp(17px, 2vw, 22px); line-height: 1.55; }
+    .hero-meta { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 28px; color: var(--muted); font-size: 12px; }
+    .hero-meta strong { color: var(--ink); }
+    .content { width: min(1120px, calc(100% - 44px)); margin: 0 auto; padding: 62px 0 100px; }
+    .section { scroll-margin-top: 22px; padding: 44px 0; border-top: 1px solid var(--line); }
+    .section:first-child { border-top: 0; padding-top: 0; }
+    .section-heading { display: grid; grid-template-columns: 170px minmax(0,1fr); gap: 30px; margin-bottom: 28px; }
+    .section-index { color: var(--orange); font-family: var(--mono); font-size: 12px; font-weight: 700; }
+    h2 { margin: 0; color: var(--blue-deep); font-size: clamp(25px, 3vw, 38px); line-height: 1.16; letter-spacing: -.04em; }
+    .section-intro { max-width: 740px; margin: 12px 0 0; color: var(--muted); }
+    .overview-grid { display: grid; grid-template-columns: 1.25fr .75fr; gap: 16px; }
+    .panel { padding: 22px; background: var(--white); border: 1px solid var(--line); }
+    .panel.blue { color: #f3f7ff; background: var(--blue); border-color: var(--blue); }
+    .panel.yellow { background: #fff8dd; border-color: #eaca61; }
+    .panel h3 { margin: 0 0 10px; font-size: 17px; letter-spacing: -.02em; }
+    .panel p { margin: 0; color: var(--muted); font-size: 14px; }
+    .panel.blue p { color: #dce8ff; }
+    .facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; margin-top: 16px; background: var(--line); border: 1px solid var(--line); }
+    .fact { min-height: 104px; padding: 16px; background: var(--white); }
+    .fact strong { display: block; color: var(--blue-deep); font-size: 28px; line-height: 1.1; letter-spacing: -.04em; }
+    .fact span { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; }
+    .flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin-top: 24px; border: 1px solid var(--line); background: var(--white); }
+    .flow-step { position: relative; min-height: 142px; padding: 20px 18px; border-right: 1px solid var(--line); }
+    .flow-step:last-child { border-right: 0; }
+    .flow-step::after { content: "→"; position: absolute; top: 48px; right: -11px; z-index: 1; width: 20px; height: 20px; color: var(--blue); background: var(--white); text-align: center; line-height: 18px; font-weight: 900; }
+    .flow-step:last-child::after { display: none; }
+    .flow-no { color: var(--orange); font-family: var(--mono); font-size: 11px; font-weight: 700; }
+    .flow-step h3 { margin: 15px 0 5px; font-size: 16px; }
+    .flow-step p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .decision-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+    .decision { padding: 20px 22px; background: var(--white); border-left: 4px solid var(--blue); border-top: 1px solid var(--line); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .decision .label { color: var(--orange); font-size: 11px; font-weight: 800; }
+    .decision h3 { margin: 7px 0 6px; font-size: 17px; }
+    .decision p { margin: 0; color: var(--muted); font-size: 13px; }
+    .architecture { padding: 25px; background: #101f45; color: #eaf1ff; overflow-x: auto; }
+    .architecture pre { margin: 0; font: 13px/1.85 var(--mono); white-space: pre; }
+    .architecture .accent { color: #f4c84a; }
+    .architecture .accent2 { color: #8fc2ff; }
+    .architecture-note { margin: 16px 0 0; color: #b9c9e8; font-size: 12px; }
+    .tool-table { width: 100%; border-collapse: collapse; background: var(--white); border: 1px solid var(--line); font-size: 13px; }
+    .tool-table th, .tool-table td { padding: 14px 16px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+    .tool-table th { color: var(--blue-deep); background: var(--sky); font-size: 12px; }
+    .tool-table tr:last-child td { border-bottom: 0; }
+    code { color: var(--blue-deep); background: #eef3fb; padding: 2px 5px; font-family: var(--mono); font-size: .92em; }
+    .timeline { position: relative; display: grid; gap: 0; margin-left: 12px; padding-left: 32px; border-left: 2px solid #b9c8e3; }
+    .timeline-item { position: relative; padding: 0 0 26px; }
+    .timeline-item:last-child { padding-bottom: 0; }
+    .timeline-item::before { content: ""; position: absolute; top: 5px; left: -41px; width: 16px; height: 16px; background: var(--yellow); border: 4px solid var(--paper); outline: 2px solid var(--blue); }
+    .timeline-kicker { color: var(--orange); font-family: var(--mono); font-size: 11px; font-weight: 700; }
+    .timeline-item h3 { margin: 5px 0 4px; font-size: 18px; }
+    .timeline-item p { max-width: 770px; margin: 0; color: var(--muted); font-size: 13px; }
+    .log-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .terminal { position: relative; padding: 20px; color: #e9f1ff; background: #111827; border: 1px solid #26344d; }
+    .terminal::before { content: "●  ●  ●"; display: block; margin-bottom: 14px; color: #64748b; font-size: 11px; letter-spacing: 2px; }
+    .terminal pre { margin: 0; white-space: pre-wrap; font: 12px/1.85 var(--mono); }
+    .terminal .prompt { color: #7dd3fc; }
+    .terminal .ok { color: #86efac; }
+    .terminal .muted { color: #94a3b8; }
+    .log-caption { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
+    .work-cycle { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; margin-top: 18px; background: var(--line); border: 1px solid var(--line); }
+    .work-file { min-height: 150px; padding: 18px; background: var(--white); }
+    .work-file code { display: inline-block; margin-bottom: 10px; }
+    .work-file h3 { margin: 0 0 6px; font-size: 15px; }
+    .work-file p { margin: 0; color: var(--muted); font-size: 12px; }
+    .video-wrap { padding: 14px; background: #101f45; border: 1px solid #203a79; }
+    .video-wrap video { display: block; width: 100%; max-height: 640px; background: #050b19; }
+    .video-caption { display: flex; justify-content: space-between; gap: 16px; padding: 12px 4px 0; color: #c5d4f2; font-size: 12px; }
+    .video-caption a { color: var(--yellow); }
+    .quote-list { display: grid; gap: 14px; }
+    .quote { display: grid; grid-template-columns: 110px 1fr; gap: 18px; padding: 18px 20px; background: var(--white); border: 1px solid var(--line); }
+    .quote-who { color: var(--orange); font-size: 12px; font-weight: 800; }
+    .quote blockquote { margin: 0; font-size: 15px; font-weight: 700; }
+    .quote cite { display: block; margin-top: 7px; color: var(--muted); font-size: 12px; font-style: normal; font-weight: 400; }
+    .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); }
+    .compare > div { padding: 22px; background: var(--white); }
+    .compare h3 { margin: 0 0 10px; font-size: 16px; }
+    .compare ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
+    .compare .result { background: #f0f7f3; }
+    .badge { display: inline-block; padding: 3px 7px; color: var(--green); background: #e1f3e9; font-size: 11px; font-weight: 800; }
+    details { background: var(--white); border: 1px solid var(--line); }
+    details + details { margin-top: 8px; }
+    summary { cursor: pointer; padding: 14px 16px; color: var(--blue-deep); font-size: 13px; font-weight: 800; }
+    details > div { padding: 0 16px 16px; color: var(--muted); font-size: 13px; }
+    .security { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .security ul { margin: 0; padding-left: 19px; color: var(--muted); font-size: 13px; }
+    .footer { padding: 28px clamp(22px, 7vw, 116px); color: #dce8ff; background: var(--blue-deep); font-size: 12px; }
+    .footer strong { color: var(--yellow); }
+    @media (max-width: 850px) {
+      .shell { display: block; }
+      .rail { position: relative; height: auto; padding: 18px 20px; }
+      .rail-note { display: none; }
+      .nav { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px; }
+      .nav a { padding: 7px 5px; font-size: 11px; }
+      .hero { padding-top: 42px; }
+      .section-heading { grid-template-columns: 1fr; gap: 8px; }
+      .overview-grid, .log-grid, .security, .decision-grid, .compare { grid-template-columns: 1fr; }
+      .work-cycle { grid-template-columns: 1fr 1fr; }
+      .facts { grid-template-columns: repeat(2, 1fr); }
+      .flow { grid-template-columns: 1fr 1fr; }
+      .flow-step { border-bottom: 1px solid var(--line); }
+      .flow-step:nth-child(2) { border-right: 0; }
+      .flow-step:nth-child(3), .flow-step:nth-child(4) { border-bottom: 0; }
+      .flow-step::after { display: none; }
+    }
+    @media (max-width: 520px) {
+      .topbar { padding: 12px 16px 0; }
+      .content { width: min(100% - 28px, 1120px); padding-top: 42px; }
+      h1 { font-size: 42px; }
+      .facts, .flow { grid-template-columns: 1fr; }
+      .flow-step, .flow-step:nth-child(2), .flow-step:nth-child(3) { border-right: 0; border-bottom: 1px solid var(--line); }
+      .flow-step:last-child { border-bottom: 0; }
+      .quote { grid-template-columns: 1fr; gap: 5px; }
+      .tool-table { display: block; overflow-x: auto; white-space: nowrap; }
+    }
+    @media print {
+      .rail, .topbar { display: none; }
+      .shell { display: block; }
+      .hero { padding-top: 20px; }
+      .section { break-inside: avoid; }
+      .panel, .terminal, details, .quote, .tool-table { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="rail" aria-label="页面导航">
+      <div>
+        <div class="brand-mark"><span class="brand-square">C</span><span>Codex 开发记录</span></div>
+        <p class="brand-sub">客服协作工作台<br>一次真实的 AI 辅助开发复盘</p>
+        <p class="nav-label">目录</p>
+        <nav class="nav">
+          <a href="#overview">项目概览</a>
+          <a href="#video">系统演示</a>
+          <a href="#method">需求落地</a>
+          <a href="#architecture">AI 架构</a>
+          <a href="#timeline">开发时间线</a>
+          <a href="#logs">操作日志</a>
+          <a href="#dialogues">对话摘录</a>
+          <a href="#result">最终效果</a>
+          <a href="#safety">工程规范</a>
+        </nav>
+      </div>
+      <div class="rail-note">记录版本：2026-09-21<br>内容已做安全脱敏</div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <button class="action" type="button" onclick="window.print()">打印 / 导出 PDF</button>
+        <button class="action" type="button" onclick="copyText('make lint\nmake test\nmake build')">复制验证命令</button>
+      </div>
+
+      <header class="hero">
+        <div class="eyebrow">一份可讲给别人的开发复盘</div>
+        <h1>用 Codex 做一个客服协作工作台</h1>
+        <p class="hero-lede">从一句自然语言需求，到一套能创建、分配、协作、查询和验证的真实系统。这里记录的不是“AI 生成了几行代码”，而是人如何和 Codex 一起拆需求、做决策、改代码、跑验证。</p>
+        <div class="hero-meta">
+          <span><strong>项目：</strong>客服协作工作台</span>
+          <span><strong>场景：</strong>滴滴自动驾驶客服</span>
+          <span><strong>开发方式：</strong>对话驱动 + Feature 切片</span>
+          <span><strong>当前记录：</strong>2026-09-21</span>
+        </div>
+      </header>
+
+      <div class="content">
+        <section class="section" id="overview">
+          <div class="section-heading">
+            <div class="section-index">01 / 起点</div>
+            <div><h2>先把复杂目标说清楚</h2><p class="section-intro">项目不是从“做一个页面”开始，而是从客服每天要处理什么、哪些动作需要协作、哪些操作必须确认开始。</p></div>
+          </div>
+          <div class="overview-grid">
+            <div class="panel blue"><h3>要解决的问题</h3><p>让客服在一个工作台里看到工单、处理工单、和同事协作；再用“我的助手”降低查询和录入成本，但不让 AI 越权替人做关键决定。</p></div>
+            <div class="panel yellow"><h3>产品边界</h3><p>演示身份来自数据库；核心业务走 Go API 和 PostgreSQL；前端不拿静态 Mock 冒充真实业务；AI 只通过结构化工具进入后端服务。</p></div>
+          </div>
+          <div class="facts" aria-label="项目事实摘要">
+            <div class="fact"><strong>18</strong><span>已完成的核心产品 Feature</span></div>
+            <div class="fact"><strong>3</strong><span>AI 助手第一批核心工具</span></div>
+            <div class="fact"><strong>30</strong><span>最近一次前端自动化测试通过</span></div>
+            <div class="fact"><strong>0</strong><span>展示页暴露的密钥和隐私</span></div>
+          </div>
+        </section>
+
+        <section class="section" id="video">
+          <div class="section-heading">
+            <div class="section-index">02 / 演示</div>
+            <div><h2>先看系统，再看开发过程</h2><p class="section-intro">这里附上客服协作工作台的系统演示视频。视频文件仍保留为项目根目录的原始文件，页面只负责播放，不把视频复制进 HTML。</p></div>
+          </div>
+          <div class="video-wrap">
+            <video controls playsinline preload="metadata">
+              <source src="../省时版：系统演示视频.MOV" type="video/quicktime">
+              当前浏览器不支持直接播放 MOV 文件，请使用 Safari、QuickTime，或点击下方文件打开。
+            </video>
+            <div class="video-caption"><span>系统演示视频 · MOV · 约 26 MB</span><a href="../省时版：系统演示视频.MOV">打开原视频</a></div>
+          </div>
+          <div class="work-cycle">
+            <article class="work-file"><code>AGENTS.md</code><h3>长期规则</h3><p>技术栈、权限、安全、错误码和开发流程。每个 Feature 都必须遵守，不因换会话而变化。</p></article>
+            <article class="work-file"><code>.ai/SESSION.md</code><h3>会话恢复点</h3><p>记录已经完成什么、正在做什么、真实验证结果和下一步。新会话先读它，再核对实际代码。</p></article>
+            <article class="work-file"><code>docs/ai/*.md</code><h3>Feature 档案</h3><p>保存每个切片的目标、实际变更、产品决策、命令结果和遗留问题。</p></article>
+            <article class="work-file"><code>代码 + 测试</code><h3>最终事实</h3><p>文档与代码冲突时以实际代码为准；完成必须由测试、构建和真实接口证明。</p></article>
+          </div>
+        </section>
+
+        <section class="section" id="method">
+          <div class="section-heading">
+            <div class="section-index">02 / 方法</div>
+            <div><h2>需求是这样落地的</h2><p class="section-intro">每一轮都保持同一个节奏：先确认边界，再切一个能验收的功能，最后用命令和真实接口证明它确实工作。</p></div>
+          </div>
+          <div class="flow">
+            <div class="flow-step"><div class="flow-no">STEP 01</div><h3>自然语言描述</h3><p>例如：“历史会话放在左侧可收缩菜单，点进去继续和我的助手对话。”</p></div>
+            <div class="flow-step"><div class="flow-no">STEP 02</div><h3>Codex 拆成 Feature</h3><p>明确页面、接口、数据表、权限、验收条件，避免直接做一大团“完整业务”。</p></div>
+            <div class="flow-step"><div class="flow-no">STEP 03</div><h3>修改真实代码</h3><p>前端、Go API、迁移和测试一起改；核心数据不使用静态 Mock。</p></div>
+            <div class="flow-step"><div class="flow-no">STEP 04</div><h3>跑验证再交付</h3><p>格式、Lint、测试、构建、差异检查和真实 API 请求逐项确认。</p></div>
+          </div>
+          <div class="decision-grid" style="margin-top:16px">
+            <article class="decision"><div class="label">关键决策 A</div><h3>不单独训练意图识别模型</h3><p>让大模型读取当前允许使用的工具说明，自行选择结构化工具；后端仍然负责权限和业务校验。</p></article>
+            <article class="decision"><div class="label">关键决策 B</div><h3>AI 不直接执行 CLI 或数据库</h3><p>前端、AI Tool 和未来 CLI 都复用同一个 TicketService，避免多套业务逻辑互相漂移。</p></article>
+            <article class="decision"><div class="label">关键决策 C</div><h3>写操作先确认，查询可以直接展示</h3><p>整理草稿不等于创建工单；批量修改先列出对象，用户确认后才执行。</p></article>
+            <article class="decision"><div class="label">关键决策 D</div><h3>先做最小记忆，不保存敏感内容</h3><p>第一版只记默认日期范围、时区、常用视图和回复偏好；会话上下文用 conversation_id 管理。</p></article>
+          </div>
+        </section>
+
+        <section class="section" id="architecture">
+          <div class="section-heading">
+            <div class="section-index">03 / 结构</div>
+            <div><h2>AI 是入口，不是权限中心</h2><p class="section-intro">“我的助手”负责理解自然语言和组织结果；真正能不能查、能不能改，由 Go 后端的业务服务决定。</p></div>
+          </div>
+          <div class="architecture" aria-label="AI 工具调用架构">
+<pre><span class="accent">用户自然语言</span>
+      ↓
+<span class="accent2">Go Assistant API</span>  ── 每次请求传入当前可用的工具说明
+      ↓
+<span class="accent2">模型选择结构化工具</span>  ── 不给模型数据库权限，不执行任意 Shell
+      ↓
+<span class="accent2">ToolRegistry / TicketService</span>
+      ↓
+<span class="accent2">权限校验 · 状态校验 · 参数校验 · 事务 · 幂等</span>
+      ↓
+<span class="accent2">PostgreSQL</span>
+      ↓
+<span class="accent">结构化结果 / 前端卡片</span>  ── 列表卡片、详情卡片、草稿卡片、确认卡片</pre>
+            <p class="architecture-note">失败也走结构化结果：ok、code、retryable、message。临时故障最多有限重试，权限、参数和状态冲突不盲目重试。</p>
+          </div>
+          <div style="height:16px"></div>
+          <table class="tool-table">
+            <thead><tr><th>工具</th><th>它做什么</th><th>为什么安全</th></tr></thead>
+            <tbody>
+              <tr><td><code>search_tickets</code></td><td>按时间、状态、负责人等条件查询工单</td><td>只返回当前用户有权限看到的结果</td></tr>
+              <tr><td><code>get_ticket_detail</code></td><td>查看一张工单的详情、协作和操作历史</td><td>后端再次校验工单可见范围</td></tr>
+              <tr><td><code>prepare_create_ticket</code></td><td>把自然语言整理成可编辑的工单草稿</td><td>只准备，不真正写入；确认后仍调用正式创建 API</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="section" id="timeline">
+          <div class="section-heading">
+            <div class="section-index">04 / 过程</div>
+            <div><h2>从基础能力到协作工作台</h2><p class="section-intro">下面是本次开发的主要 Feature 轨迹。每个切片都有代码变化和验证结果，而不是只停留在方案图上。</p></div>
+          </div>
+          <div class="timeline">
+            <article class="timeline-item"><div class="timeline-kicker">FEATURE 01–05 · 基础骨架</div><h3>身份、工单、SLA 与状态动作</h3><p>建立演示用户与角色；完成工单创建、列表、详情、筛选、分页、SLA、领取、分配、改派、状态机、评论、历史和编辑。</p></article>
+            <article class="timeline-item"><div class="timeline-kicker">FEATURE 06–09 · 首页和效率</div><h3>问候、快捷视图、记忆、统计和侧栏</h3><p>加入按时间问候、保存查询标签、轻量用户偏好、今日工作概览、pending/overdue 筛选和可收缩左侧目录。</p></article>
+            <article class="timeline-item"><div class="timeline-kicker">FEATURE 10–12 · 工作台重构</div><h3>双岛首页与“我的助手”</h3><p>左侧是对话入口，右侧聚焦工单；统一品牌文案；移除重复入口；助手支持查询卡片、草稿整理和确认创建。</p></article>
+            <article class="timeline-item"><div class="timeline-kicker">FEATURE 13–15 · 会话连续性</div><h3>历史会话成为独立二级菜单</h3><p>历史会话按用户保存到 PostgreSQL；点进记录后打开对应对话；继续发送时携带原 conversation_id。</p></article>
+            <article class="timeline-item"><div class="timeline-kicker">FEATURE 16–18 · 协作和可用性</div><h3>详情页协作增强与无横向滚动</h3><p>评论放到右侧；改派支持搜索姓名和团队；顶部突出处理人、团队、客户和 SLA；工单列表在窄屏改为信息卡，避免左右滑动。</p></article>
+          </div>
+        </section>
+
+        <section class="section" id="logs">
+          <div class="section-heading">
+            <div class="section-index">05 / 证据</div>
+            <div><h2>不是“看起来完成”，而是跑出来</h2><p class="section-intro">以下是本次记录中实际使用的验证动作和结果。展示的是脱敏后的摘要，不包含本机路径、环境变量值或内部认证信息。</p></div>
+          </div>
+          <div class="log-grid">
+            <div><div class="terminal"><pre><span class="prompt">$</span> make format-check
+<span class="ok">✓</span> Go / 前端格式检查通过
+
+<span class="prompt">$</span> make lint
+<span class="ok">✓</span> ESLint / go vet 通过
+
+<span class="prompt">$</span> make test
+<span class="ok">✓</span> 后端测试通过
+<span class="ok">✓</span> 前端 9 个测试文件、30 个测试通过</pre></div><p class="log-caption">代码质量：格式、Lint、单元测试。</p></div>
+            <div><div class="terminal"><pre><span class="prompt">$</span> make build
+<span class="ok">✓</span> Go build 通过
+<span class="ok">✓</span> Vite production build 通过
+
+<span class="prompt">$</span> git diff --check
+<span class="ok">✓</span> 无空格和补丁问题
+
+<span class="prompt">$</span> POST /api/assistant/chat
+<span class="ok">200</span> 查询返回工单卡片和 conversation_id</pre></div><p class="log-caption">交付质量：构建、差异检查和真实接口。</p></div>
+          </div>
+          <div style="height:16px"></div>
+          <details><summary>真实接口验证看什么？</summary><div>用“查一下今天要处理哪些”请求助手接口，返回 HTTP 200 和工单卡片；会话列表返回当前用户的记录，会话详情按 user → assistant 顺序返回消息。模型配置本身保存在本地后端环境变量中，本页不展示密钥。</div></details>
+          <details><summary>为什么不把原始系统日志直接公开？</summary><div>原始日志可能包含绝对路径、机器信息、环境变量名、用户标识或模型服务配置。这里保留能说明开发方法的事实，去掉不能公开的运行细节，适合对外演示。</div></details>
+        </section>
+
+        <section class="section" id="dialogues">
+          <div class="section-heading">
+            <div class="section-index">06 / 对话</div>
+            <div><h2>AI 对话不是聊天，是共同做设计</h2><p class="section-intro">下面摘录几轮真正影响架构和产品的讨论。用户提出问题，Codex 解释取舍，再把结论落实到代码和验证。</p></div>
+          </div>
+          <div class="quote-list">
+            <article class="quote"><div class="quote-who">用户提问</div><div><blockquote>“AI 整理工单草稿为什么不设计成一个意图 intent？”</blockquote><cite>结论：第一版不单独训练意图模型，让大模型根据工具说明选择结构化工具；减少一层分类维护。</cite></div></article>
+            <article class="quote"><div class="quote-who">用户追问</div><div><blockquote>“每次请求都要把完整工具列表给模型吗？”</blockquote><cite>结论：后端按当前场景传入允许工具及说明，模型选择工具；Go 代码负责执行和校验，不把判断权交给前端。</cite></div></article>
+            <article class="quote"><div class="quote-who">用户质疑</div><div><blockquote>“工具执行失败怎么办？第二次模型调用怎么保障？”</blockquote><cite>结论：工具结果先结构化表达 ok、code、retryable、message；临时故障有限重试，业务冲突不重试，并让前端直接显示可理解的错误卡片。</cite></div></article>
+            <article class="quote"><div class="quote-who">界面反馈</div><div><blockquote>“左右滑动太不方便，工单中心要尽量避免横向滚动。”</blockquote><cite>结论：压缩列宽和间距，窄屏切换为纵向信息卡；视觉调整也必须经过真实页面验证。</cite></div></article>
+          </div>
+        </section>
+
+        <section class="section" id="result">
+          <div class="section-heading">
+            <div class="section-index">07 / 结果</div>
+            <div><h2>最终交付的不只是一个助手</h2><p class="section-intro">AI 被放在客服真正的工作流里：查得到、理得清、改之前能确认，改完以后回到真实工单中心。</p></div>
+          </div>
+          <div class="compare">
+            <div><h3>原始需求语言</h3><ul><li>帮我查一下今天要处理哪些。</li><li>帮我创建一个订单重复扣费工单。</li><li>历史会话放左侧，可以展开收起。</li><li>评论放右侧，改派要能搜索团队。</li><li>不要左右滑动，首屏多展示工单。</li></ul></div>
+            <div class="result"><h3><span class="badge">已落地</span> 系统能力</h3><ul><li>助手返回真实工单列表卡片，点击进入详情。</li><li>自然语言整理草稿，补齐必填项，确认后创建。</li><li>独立历史会话页，继续发送保留会话上下文。</li><li>详情页右侧评论、团队/人员搜索、协作信息置顶。</li><li>列表响应式适配，窄屏改为纵向信息卡。</li></ul></div>
+          </div>
+          <div class="panel" style="margin-top:16px"><h3>适合演示的一句话</h3><p>我不是让 AI 直接写一个 Demo，而是用 Codex 把自然语言需求拆成可验收的 Feature，让前端、后端、数据库、权限和测试一起形成闭环。</p></div>
+        </section>
+
+        <section class="section" id="safety">
+          <div class="section-heading">
+            <div class="section-index">08 / 底线</div>
+            <div><h2>高标准来自这些小规则</h2><p class="section-intro">AI 可以帮忙理解和编排，但系统的安全边界、业务规则和可验证性不能交给模型猜。</p></div>
+          </div>
+          <div class="security">
+            <div class="panel"><h3>工程规则</h3><ul><li>状态机、权限、并发领取、输入校验由后端强制校验。</li><li>数据变更和操作历史在同一个数据库事务内完成。</li><li>业务冲突优先返回 409；不存在 404；参数错误 400；无权限 403。</li><li>SQL 使用参数化查询，不拼接用户输入。</li></ul></div>
+            <div class="panel"><h3>展示页的安全处理</h3><ul><li>本页只展示脱敏后的开发过程摘要。</li><li>API Key、数据库密码、Token 和绝对路径不进入页面。</li><li>模型服务配置仅保存在本机后端环境变量。</li><li>这不是原始会话导出，而是可对外分享的开发复盘。</li></ul></div>
+          </div>
+        </section>
+      </div>
+      <footer class="footer"><strong>客服协作工作台 · Codex 开发记录</strong><br>把需求说清楚，把边界守住，把每一步跑出来。<span style="float:right">2026-09-21</span></footer>
+    </main>
+  </div>
+  <script>
+    function copyText(text) {
+      navigator.clipboard.writeText(text).then(function () {
+        var button = document.querySelector('.topbar .action:nth-child(2)');
+        var original = button.textContent;
+        button.textContent = '已复制';
+        setTimeout(function () { button.textContent = original; }, 1400);
+      }).catch(function () {
+        window.prompt('复制以下内容：', text);
+      });
+    }
+  </script>
+</body>
+</html>

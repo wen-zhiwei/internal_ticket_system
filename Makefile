@@ -5,10 +5,10 @@ install:
 	cd backend && go mod download
 
 api:
-	cd backend && GOCACHE=$${GOCACHE:-/tmp/internal_ticket_system-go-cache} go run ./cmd/server
+	@set -a; if test -f .env; then . ./.env; fi; set +a; cd backend && GOCACHE=$${GOCACHE:-/tmp/internal_ticket_system-go-cache} go run ./cmd/server
 
 frontend:
-	cd frontend && npm run dev
+	@set -a; if test -f .env; then . ./.env; fi; set +a; cd frontend && npm run dev
 
 dev:
 	@echo "Run in two terminals: make api and make frontend"

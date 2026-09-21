@@ -3,7 +3,7 @@ import { priorityLabels, statusLabels } from "../domain/tickets";
 
 export function PriorityBadge({ priority }: { priority: TicketPriority }) {
   return (
-    <span className={`badge priority-${priority}`}>
+    <span className={`ticket-meta priority-${priority}`}>
       {priorityLabels[priority]}
     </span>
   );
@@ -11,6 +11,8 @@ export function PriorityBadge({ priority }: { priority: TicketPriority }) {
 
 export function StatusBadge({ status }: { status: TicketStatus }) {
   return (
-    <span className={`badge status-${status}`}>{statusLabels[status]}</span>
+    <span className={`ticket-meta status-${status}`}>
+      {statusLabels[status]}
+    </span>
   );
 }

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"internal_ticket_system/backend/internal/assistant"
 	"internal_ticket_system/backend/internal/config"
 	"internal_ticket_system/backend/internal/httpapi"
 	"internal_ticket_system/backend/internal/tickets"
@@ -26,12 +27,25 @@ func main() {
 	}
 	defer pool.Close()
 
+	userStore := users.NewPGStore(pool)
+	ticketStore := tickets.NewPGStore(pool)
+	var assistantService httpapi.AssistantService
+	if cfg.LLMBaseURL != "" && cfg.LLMModel != "" {
+		assistantService = assistant.NewService(
+			assistant.NewOpenAIClient(cfg.LLMBaseURL, cfg.LLMAPIKey, cfg.LLMModel, nil),
+			ticketStore,
+		)
+	}
+
+	conversationStore := assistant.NewPGConversationStore(pool)
 	server := &http.Server{
-		Addr:              cfg.Addr,
-		Handler: httpapi.NewHandler(
+		Addr: cfg.Addr,
+		Handler: httpapi.NewHandlerWithAssistantHistory(
 			cfg.WebOrigin,
-			users.NewPGStore(pool),
-			tickets.NewPGStore(pool),
+			userStore,
+			ticketStore,
+			assistantService,
+			conversationStore,
 		),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

@@ -2,6 +2,7 @@ import { apiRequest } from "./client";
 
 export type TicketPriority = "urgent" | "high" | "normal" | "low";
 export type TicketStatus = "open" | "in_progress" | "resolved" | "closed";
+export type TicketStatusFilter = TicketStatus | "pending";
 export type TicketSortField =
   "created_at" | "updated_at" | "priority" | "sla_due_at";
 export type TicketSortDirection = "asc" | "desc";
@@ -9,6 +10,7 @@ export type TicketSortDirection = "asc" | "desc";
 export type UserSummary = {
   id: string;
   name: string;
+  team: string;
 };
 
 export type Ticket = {
@@ -51,7 +53,8 @@ export type TicketListResponse = {
 
 export type TicketListFilters = {
   q?: string;
-  status?: TicketStatus | "";
+  status?: TicketStatusFilter | "";
+  overdue?: boolean;
   priority?: TicketPriority | "";
   assigneeId?: string;
   page?: number;
@@ -68,6 +71,8 @@ export type CreateTicketInput = {
   priority: TicketPriority;
 };
 
+export type UpdateTicketInput = CreateTicketInput;
+
 export function listTickets(
   userId: string,
   filters: TicketListFilters,
@@ -75,6 +80,7 @@ export function listTickets(
   const query = new URLSearchParams();
   if (filters.q) query.set("q", filters.q);
   if (filters.status) query.set("status", filters.status);
+  if (filters.overdue) query.set("overdue", "true");
   if (filters.priority) query.set("priority", filters.priority);
   if (filters.assigneeId) query.set("assignee_id", filters.assigneeId);
   query.set("page", String(filters.page ?? 1));
@@ -101,6 +107,18 @@ export function createTicket(
 ): Promise<TicketDetail> {
   return apiRequest<TicketDetail>("/tickets", {
     method: "POST",
+    body: JSON.stringify(input),
+    userId,
+  });
+}
+
+export function updateTicket(
+  userId: string,
+  ticketId: string,
+  input: UpdateTicketInput,
+): Promise<TicketDetail> {
+  return apiRequest<TicketDetail>(`/tickets/${encodeURIComponent(ticketId)}`, {
+    method: "PATCH",
     body: JSON.stringify(input),
     userId,
   });

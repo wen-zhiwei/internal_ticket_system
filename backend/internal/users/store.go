@@ -23,7 +23,7 @@ func NewPGStore(pool *pgxpool.Pool) *PGStore {
 
 func (s *PGStore) List(ctx context.Context, role *Role) ([]User, error) {
 	const baseQuery = `
-		SELECT id::text, name, role, created_at::text
+		SELECT id::text, name, team, role, created_at::text
 		FROM users
 	`
 
@@ -42,7 +42,7 @@ func (s *PGStore) List(ctx context.Context, role *Role) ([]User, error) {
 	result := make([]User, 0)
 	for rows.Next() {
 		var user User
-		if err := rows.Scan(&user.ID, &user.Name, &user.Role, &user.CreatedAt); err != nil {
+		if err := rows.Scan(&user.ID, &user.Name, &user.Team, &user.Role, &user.CreatedAt); err != nil {
 			return nil, err
 		}
 		result = append(result, user)
@@ -55,13 +55,13 @@ func (s *PGStore) List(ctx context.Context, role *Role) ([]User, error) {
 
 func (s *PGStore) Get(ctx context.Context, id string) (User, error) {
 	const query = `
-		SELECT id::text, name, role, created_at::text
+		SELECT id::text, name, team, role, created_at::text
 		FROM users
 		WHERE id::text = $1
 	`
 
 	var user User
-	if err := s.pool.QueryRow(ctx, query, id).Scan(&user.ID, &user.Name, &user.Role, &user.CreatedAt); err != nil {
+	if err := s.pool.QueryRow(ctx, query, id).Scan(&user.ID, &user.Name, &user.Team, &user.Role, &user.CreatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, ErrNotFound
 		}

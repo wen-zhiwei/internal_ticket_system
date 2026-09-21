@@ -4,11 +4,20 @@ import { getCurrentUser, listUsers, type User } from "./api/users";
 import { NewTicketPage } from "./pages/NewTicketPage";
 import { TicketDetailPage } from "./pages/TicketDetailPage";
 import { TicketQueue } from "./pages/TicketQueue";
+import {
+  AssistantConversation,
+  AssistantWidget,
+} from "./components/AssistantWidget";
+import { AssistantHistory } from "./components/AssistantHistory";
+import { TicketOverviewDashboard } from "./components/TicketOverviewDashboard";
+import { currentGreeting } from "./domain/greeting";
 
 const CURRENT_USER_KEY = "internal_ticket_system.current-user-id";
+const SIDEBAR_COLLAPSED_KEY = "internal_ticket_system.sidebar-collapsed";
 
 type Route =
   | { page: "tickets" }
+  | { page: "assistant-history" }
   | { page: "new-ticket" }
   | { page: "ticket-detail"; ticketId: string };
 
@@ -22,6 +31,7 @@ function getErrorMessage(requestError: unknown, fallback: string) {
 
 function readRoute(): Route {
   const path = window.location.hash.replace(/^#\/?/, "");
+  if (path === "assistant-history") return { page: "assistant-history" };
   if (path === "new-ticket") return { page: "new-ticket" };
   const match = path.match(/^tickets\/([^/]+)$/);
   if (match) {
@@ -31,9 +41,10 @@ function readRoute(): Route {
 }
 
 function routeTitle(route: Route) {
+  if (route.page === "assistant-history") return "历史会话";
   if (route.page === "new-ticket") return "新建工单";
   if (route.page === "ticket-detail") return "工单详情";
-  return "工单队列";
+  return "工单中心";
 }
 
 export function App() {
@@ -47,6 +58,14 @@ export function App() {
   const [usersError, setUsersError] = useState<string | null>(null);
   const [identityError, setIdentityError] = useState<string | null>(null);
   const [usersReloadKey, setUsersReloadKey] = useState(0);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(
+    () => window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true",
+  );
+  const [selectedAssistantConversationId, setSelectedAssistantConversationId] =
+    useState<string | null>(null);
+  const [assistantHistoryRefreshKey, setAssistantHistoryRefreshKey] =
+    useState(0);
+  const [isHistoryAssistantOpen, setIsHistoryAssistantOpen] = useState(false);
 
   useEffect(() => {
     if (!window.location.hash) {
@@ -124,52 +143,100 @@ export function App() {
     !identityError &&
     currentUser?.id !== currentUserId;
 
+  function toggleSidebar() {
+    setIsSidebarCollapsed((collapsed) => {
+      const next = !collapsed;
+      window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
+      return next;
+    });
+  }
+
+  function openAssistantConversation(conversationId: string) {
+    setSelectedAssistantConversationId(conversationId);
+    setIsHistoryAssistantOpen(true);
+  }
+
+  function startHistoryConversation() {
+    setSelectedAssistantConversationId(null);
+    setIsHistoryAssistantOpen(true);
+  }
+
   function handleUserChange(userId: string) {
     setIdentityError(null);
     setCurrentUser(null);
+    setSelectedAssistantConversationId(null);
+    setIsHistoryAssistantOpen(false);
+    setAssistantHistoryRefreshKey((value) => value + 1);
     setCurrentUserId(userId);
     window.localStorage.setItem(CURRENT_USER_KEY, userId);
   }
 
-  const activePage = route.page === "ticket-detail" ? "tickets" : route.page;
-
   return (
-    <div className="app-shell">
+    <div
+      className={`app-shell ${isSidebarCollapsed ? "sidebar-collapsed" : ""}`}
+    >
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark">H</span>
+          <span className="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" role="presentation">
+              <path d="M7.5 18.5c1.6-3.1 3.8-5.2 6.6-6.3 2.4-.9 3.5-2.3 3.5-4.2 0-2.3-1.8-4-4.1-4-2.1 0-3.7 1.4-4 3.4" />
+              <circle cx="9.2" cy="8.2" r="2.1" />
+              <path d="M5 20h13" />
+            </svg>
+          </span>
           <div>
-            <strong>Internal Ticket System</strong>
-            <small>客服协作平台</small>
+            <strong>客服协作工作台</strong>
           </div>
+          <button
+            className="sidebar-toggle"
+            type="button"
+            aria-label={isSidebarCollapsed ? "展开目录栏" : "收起目录栏"}
+            title={isSidebarCollapsed ? "展开目录栏" : "收起目录栏"}
+            aria-expanded={!isSidebarCollapsed}
+            onClick={toggleSidebar}
+          >
+            {isSidebarCollapsed ? "›" : "‹"}
+          </button>
         </div>
         <nav className="nav" aria-label="主导航">
           <a
-            className={`nav-item ${activePage === "tickets" ? "active" : ""}`}
+            className={`nav-item ${route.page === "tickets" ? "active" : ""}`}
             href="#/tickets"
           >
             <span aria-hidden="true">▤</span>
-            工单队列
+            <span className="nav-label">工单中心</span>
           </a>
           <a
-            className={`nav-item ${activePage === "new-ticket" ? "active" : ""}`}
-            href="#/new-ticket"
+            className={`nav-item ${route.page === "assistant-history" ? "active" : ""}`}
+            href="#/assistant-history"
           >
-            <span aria-hidden="true">＋</span>
-            新建工单
+            <span aria-hidden="true">◷</span>
+            <span className="nav-label">历史会话</span>
           </a>
         </nav>
         <div className="sidebar-note">
           <span className="status-dot" />
-          本地演示环境
+          <span className="sidebar-note-label">开发环境</span>
         </div>
       </aside>
 
       <main className="main-content">
         <header className="topbar">
           <div>
-            <p className="eyebrow">客服工作台</p>
-            <h1>{routeTitle(route)}</h1>
+            {route.page === "tickets" && currentUser ? (
+              <h1 className="greeting-title">
+                {currentGreeting()}，{currentUser.name}，今天工作也要稳稳推进。
+              </h1>
+            ) : (
+              <>
+                {currentUser && (
+                  <p className="welcome-line">
+                    {currentGreeting()}，{currentUser.name}
+                  </p>
+                )}
+                <h1>{routeTitle(route)}</h1>
+              </>
+            )}
           </div>
           <label className="identity-switcher">
             <span>当前用户</span>
@@ -235,21 +302,61 @@ export function App() {
           !isLoadingIdentity &&
           currentUser && (
             <>
-              <div className="identity-banner">
-                <span className={`role-chip ${currentUser.role}`}>
-                  {roleLabel(currentUser.role)}
-                </span>
-                <p>
-                  当前以 <strong>{currentUser.name}</strong>{" "}
-                  操作；权限由后端根据 PostgreSQL 中的角色校验。
-                </p>
-              </div>
               {route.page === "tickets" && (
-                <TicketQueue
-                  key={currentUser.id}
-                  currentUser={currentUser}
-                  agents={agents}
-                />
+                <>
+                  <TicketOverviewDashboard currentUser={currentUser} />
+                  <div className="ticket-workspace" aria-label="客服协作工作区">
+                    <div className="ticket-assistant-island">
+                      <AssistantConversation
+                        key={`assistant:${currentUser.id}`}
+                        currentUser={currentUser}
+                        embedded
+                        selectedConversationId={selectedAssistantConversationId}
+                        onConversationChange={
+                          setSelectedAssistantConversationId
+                        }
+                        onHistoryChange={() =>
+                          setAssistantHistoryRefreshKey((value) => value + 1)
+                        }
+                      />
+                    </div>
+                    <div className="ticket-center-island">
+                      <TicketQueue
+                        key={`tickets:${currentUser.id}`}
+                        currentUser={currentUser}
+                        agents={agents}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+              {route.page === "assistant-history" && (
+                <div className="assistant-history-page">
+                  <AssistantHistory
+                    key={`assistant-history:${currentUser.id}`}
+                    currentUser={currentUser}
+                    activeConversationId={selectedAssistantConversationId}
+                    refreshKey={assistantHistoryRefreshKey}
+                    onSelect={openAssistantConversation}
+                    onNewConversation={startHistoryConversation}
+                  />
+                  {isHistoryAssistantOpen && (
+                    <div className="assistant-history-widget">
+                      <AssistantConversation
+                        key={`history-assistant:${currentUser.id}:${selectedAssistantConversationId ?? "new"}`}
+                        currentUser={currentUser}
+                        selectedConversationId={selectedAssistantConversationId}
+                        onClose={() => setIsHistoryAssistantOpen(false)}
+                        onConversationChange={
+                          setSelectedAssistantConversationId
+                        }
+                        onHistoryChange={() =>
+                          setAssistantHistoryRefreshKey((value) => value + 1)
+                        }
+                      />
+                    </div>
+                  )}
+                </div>
               )}
               {route.page === "new-ticket" && (
                 <NewTicketPage key={currentUser.id} currentUser={currentUser} />
@@ -262,6 +369,10 @@ export function App() {
                   ticketId={route.ticketId}
                 />
               )}
+              {route.page !== "tickets" &&
+                route.page !== "assistant-history" && (
+                  <AssistantWidget currentUser={currentUser} />
+                )}
             </>
           )}
       </main>

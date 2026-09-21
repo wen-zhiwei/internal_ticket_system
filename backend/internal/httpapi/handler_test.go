@@ -45,8 +45,8 @@ func (s fakeUserStore) Get(_ context.Context, id string) (users.User, error) {
 
 func testUsers() []users.User {
 	return []users.User{
-		{ID: "agent-001", Name: "张三", Role: users.RoleAgent},
-		{ID: "supervisor-001", Name: "主管用户", Role: users.RoleSupervisor},
+		{ID: "agent-001", Name: "王芳", Team: "自动驾驶客服一组", Role: users.RoleAgent},
+		{ID: "supervisor-001", Name: "赵经理", Team: "客服管理组", Role: users.RoleSupervisor},
 	}
 }
 
@@ -62,7 +62,7 @@ func TestCurrentUserUsesDatabaseRoleInsteadOfClientRole(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", response.Code)
 	}
-	if body := response.Body.String(); !containsAll(body, `"role":"agent"`, `"name":"张三"`) {
+	if body := response.Body.String(); !containsAll(body, `"role":"agent"`, `"name":"王芳"`, `"team":"自动驾驶客服一组"`) {
 		t.Fatalf("expected database-backed agent response, got %s", body)
 	}
 }
@@ -143,7 +143,6 @@ func contains(value, part string) bool {
 	return false
 }
 
-
 func TestListUsersReturnsAllUsers(t *testing.T) {
 	handler := NewHandler("http://localhost:5173", fakeUserStore{items: testUsers()}, &fakeTicketStore{})
 	request := httptest.NewRequest(http.MethodGet, "/api/users", nil)
@@ -154,7 +153,7 @@ func TestListUsersReturnsAllUsers(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
 	}
-	if body := response.Body.String(); !containsAll(body, `"items"`, `"id":"agent-001"`, `"id":"supervisor-001"`) {
+	if body := response.Body.String(); !containsAll(body, `"items"`, `"id":"agent-001"`, `"id":"supervisor-001"`, `"team":"自动驾驶客服一组"`) {
 		t.Fatalf("expected all users in response, got %s", body)
 	}
 }

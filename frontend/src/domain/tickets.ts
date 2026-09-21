@@ -16,6 +16,7 @@ export const statusLabels: Record<TicketStatus, string> = {
 
 export const eventTypeLabels: Record<string, string> = {
   created: "创建工单",
+  updated: "更新工单",
   claimed: "领取工单",
   assigned: "分配工单",
   reassigned: "改派工单",

@@ -10,6 +10,19 @@ import (
 	"internal_ticket_system/backend/internal/users"
 )
 
+func (h *Handler) ticketOverview(w http.ResponseWriter, r *http.Request) {
+	actor, ok := h.requireCurrentUser(w, r)
+	if !ok {
+		return
+	}
+	overview, err := h.ticketStore.Overview(r.Context(), actor)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "ticket_store_unavailable", "暂时无法读取统计概览")
+		return
+	}
+	writeJSON(w, http.StatusOK, overview)
+}
+
 func (h *Handler) listTickets(w http.ResponseWriter, r *http.Request) {
 	actor, ok := h.requireCurrentUser(w, r)
 	if !ok {
@@ -85,6 +98,36 @@ func (h *Handler) createTicket(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, detail)
 }
 
+func (h *Handler) updateTicket(w http.ResponseWriter, r *http.Request) {
+	actor, id, ok := h.requireTicketActor(w, r)
+	if !ok {
+		return
+	}
+
+	var input tickets.UpdateInput
+	if err := decodeJSONBody(w, r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", "请求体必须是合法且字段完整的 JSON 对象")
+		return
+	}
+	normalized, err := input.NormalizeAndValidate()
+	if err != nil {
+		fields, ok := err.(tickets.ValidationErrors)
+		if !ok {
+			writeError(w, http.StatusBadRequest, "validation_error", "请检查工单字段")
+			return
+		}
+		writeValidationError(w, "请检查工单字段", fields)
+		return
+	}
+
+	detail, err := h.ticketStore.Update(r.Context(), actor, id, normalized)
+	if err != nil {
+		writeTicketMutationError(w, err, "编辑工单失败")
+		return
+	}
+	writeJSON(w, http.StatusOK, detail)
+}
+
 func parseTicketListFilter(r *http.Request) (tickets.ListFilter, error) {
 	query := r.URL.Query()
 	filter := tickets.ListFilter{
@@ -97,11 +140,15 @@ func parseTicketListFilter(r *http.Request) (tickets.ListFilter, error) {
 	}
 
 	if rawStatus := strings.TrimSpace(query.Get("status")); rawStatus != "" {
-		status, err := tickets.ParseStatus(rawStatus)
-		if err != nil {
-			return tickets.ListFilter{}, errors.New("status 必须是 open、in_progress、resolved 或 closed")
+		if rawStatus == "pending" {
+			filter.Pending = true
+		} else {
+			status, err := tickets.ParseStatus(rawStatus)
+			if err != nil {
+				return tickets.ListFilter{}, errors.New("status 必须是 pending、open、in_progress、resolved 或 closed")
+			}
+			filter.Status = &status
 		}
-		filter.Status = &status
 	}
 	if rawPriority := strings.TrimSpace(query.Get("priority")); rawPriority != "" {
 		priority, err := tickets.ParsePriority(rawPriority)
@@ -110,6 +157,14 @@ func parseTicketListFilter(r *http.Request) (tickets.ListFilter, error) {
 		}
 		filter.Priority = &priority
 	}
+	if rawOverdue := strings.TrimSpace(query.Get("overdue")); rawOverdue != "" {
+		overdue, parseErr := strconv.ParseBool(rawOverdue)
+		if parseErr != nil {
+			return tickets.ListFilter{}, errors.New("overdue 必须是 true 或 false")
+		}
+		filter.Overdue = overdue
+	}
+
 	if assigneeID := strings.TrimSpace(query.Get("assignee_id")); assigneeID != "" {
 		if assigneeID != "unassigned" && !tickets.IsUUID(assigneeID) {
 			return tickets.ListFilter{}, errors.New("assignee_id 必须是用户 UUID 或 unassigned")
@@ -269,6 +324,8 @@ func writeTicketMutationError(w http.ResponseWriter, err error, fallback string)
 		writeError(w, http.StatusForbidden, "ticket_action_forbidden", "当前用户无权执行此操作")
 	case errors.Is(err, tickets.ErrConflict):
 		writeError(w, http.StatusConflict, "ticket_conflict", "工单已被其他操作更新，或当前状态不允许此操作")
+	case errors.Is(err, tickets.ErrTicketClosed):
+		writeError(w, http.StatusConflict, "ticket_closed", "已关闭工单不能编辑")
 	case errors.Is(err, tickets.ErrInvalidTransition):
 		writeError(w, http.StatusConflict, "invalid_status_transition", "不允许从当前状态流转到目标状态")
 	case errors.Is(err, tickets.ErrAssigneeNotFound):

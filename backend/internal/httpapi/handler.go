@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"internal_ticket_system/backend/internal/assistant"
 	"internal_ticket_system/backend/internal/tickets"
 	"internal_ticket_system/backend/internal/users"
 )
@@ -17,10 +18,22 @@ type UserStore interface {
 	Get(ctx context.Context, id string) (users.User, error)
 }
 
+type AssistantService interface {
+	Chat(context.Context, users.User, string) (assistant.Response, error)
+}
+
+type AssistantConversationStore interface {
+	List(context.Context, users.User, int) ([]assistant.ConversationSummary, error)
+	Get(context.Context, users.User, string) (assistant.Conversation, error)
+	AppendExchange(context.Context, users.User, string, string, assistant.Response) (assistant.Conversation, error)
+}
+
 type TicketStore interface {
 	List(ctx context.Context, actor users.User, filter tickets.ListFilter) (tickets.ListResult, error)
+	Overview(ctx context.Context, actor users.User) (tickets.Overview, error)
 	Get(ctx context.Context, actor users.User, id string) (tickets.Detail, error)
 	Create(ctx context.Context, actor users.User, input tickets.CreateInput) (tickets.Detail, error)
+	Update(ctx context.Context, actor users.User, id string, input tickets.UpdateInput) (tickets.Detail, error)
 	Claim(ctx context.Context, actor users.User, id string) (tickets.Detail, error)
 	Assign(ctx context.Context, actor users.User, id string, input tickets.AssignmentInput) (tickets.Detail, error)
 	Reassign(ctx context.Context, actor users.User, id string, input tickets.AssignmentInput) (tickets.Detail, error)
@@ -29,20 +42,41 @@ type TicketStore interface {
 }
 
 type Handler struct {
-	webOrigin  string
-	userStore  UserStore
-	ticketStore TicketStore
+	webOrigin              string
+	userStore              UserStore
+	ticketStore            TicketStore
+	assistant              AssistantService
+	assistantConversations AssistantConversationStore
 }
 
 func NewHandler(webOrigin string, userStore UserStore, ticketStore TicketStore) http.Handler {
-	h := &Handler{webOrigin: webOrigin, userStore: userStore, ticketStore: ticketStore}
+	return NewHandlerWithAssistant(webOrigin, userStore, ticketStore, nil)
+}
+
+func NewHandlerWithAssistant(webOrigin string, userStore UserStore, ticketStore TicketStore, assistantService AssistantService) http.Handler {
+	return NewHandlerWithAssistantHistory(webOrigin, userStore, ticketStore, assistantService, nil)
+}
+
+func NewHandlerWithAssistantHistory(webOrigin string, userStore UserStore, ticketStore TicketStore, assistantService AssistantService, conversationStore AssistantConversationStore) http.Handler {
+	h := &Handler{
+		webOrigin:              webOrigin,
+		userStore:              userStore,
+		ticketStore:            ticketStore,
+		assistant:              assistantService,
+		assistantConversations: conversationStore,
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", h.health)
 	mux.HandleFunc("GET /api/users", h.listUsers)
 	mux.HandleFunc("GET /api/me", h.currentUser)
+	mux.HandleFunc("POST /api/assistant/chat", h.assistantChat)
+	mux.HandleFunc("GET /api/assistant/conversations", h.listAssistantConversations)
+	mux.HandleFunc("GET /api/assistant/conversations/{id}", h.getAssistantConversation)
 	mux.HandleFunc("GET /api/tickets", h.listTickets)
+	mux.HandleFunc("GET /api/tickets/overview", h.ticketOverview)
 	mux.HandleFunc("POST /api/tickets", h.createTicket)
 	mux.HandleFunc("GET /api/tickets/{id}", h.getTicket)
+	mux.HandleFunc("PATCH /api/tickets/{id}", h.updateTicket)
 	mux.HandleFunc("POST /api/tickets/{id}/claim", h.claimTicket)
 	mux.HandleFunc("POST /api/tickets/{id}/assign", h.assignTicket)
 	mux.HandleFunc("POST /api/tickets/{id}/reassign", h.reassignTicket)

@@ -12,9 +12,9 @@ CREATE TABLE IF NOT EXISTS users (
 
 INSERT INTO users (id, name, role)
 VALUES
-    ('00000000-0000-0000-0000-000000000001', '张三', 'agent'),
-    ('00000000-0000-0000-0000-000000000002', '李四', 'agent'),
-    ('00000000-0000-0000-0000-000000000003', '主管用户', 'supervisor')
+    ('00000000-0000-0000-0000-000000000001', '王芳', 'agent'),
+    ('00000000-0000-0000-0000-000000000002', '李娜', 'agent'),
+    ('00000000-0000-0000-0000-000000000003', '赵经理', 'supervisor')
 ON CONFLICT (id) DO UPDATE
 SET name = EXCLUDED.name,
     role = EXCLUDED.role;

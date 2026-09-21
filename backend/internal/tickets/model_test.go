@@ -36,6 +36,26 @@ func TestCreateInputRejectsMissingAndInvalidFields(t *testing.T) {
 	}
 }
 
+func TestUpdateInputUsesCreateFieldValidation(t *testing.T) {
+	input, err := (UpdateInput{
+		Title:           "  更新标题  ",
+		Description:     "  更新描述  ",
+		CustomerName:    "  客户  ",
+		CustomerContact: "  contact  ",
+		Priority:        PriorityHigh,
+	}).NormalizeAndValidate()
+	if err != nil {
+		t.Fatalf("expected valid update input, got %v", err)
+	}
+	if input.Title != "更新标题" || input.CustomerContact != "contact" {
+		t.Fatalf("expected normalized update input, got %#v", input)
+	}
+
+	if _, err := (UpdateInput{Priority: "critical"}).NormalizeAndValidate(); err == nil {
+		t.Fatal("expected invalid update input to fail")
+	}
+}
+
 func TestParseSortOptions(t *testing.T) {
 	if field, err := ParseSortField("sla_due_at"); err != nil || field != SortSLADueAt {
 		t.Fatalf("expected sla_due_at, got %q, %v", field, err)

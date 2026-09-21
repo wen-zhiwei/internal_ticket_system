@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { ApiError } from "../api/client";
 import {
   createTicket,
@@ -6,6 +6,10 @@ import {
   type TicketPriority,
 } from "../api/tickets";
 import type { User } from "../api/users";
+import {
+  clearAssistantDraft,
+  readAssistantDraft,
+} from "../domain/assistantDraft";
 
 type Props = {
   currentUser: User;
@@ -39,10 +43,26 @@ function validate(form: CreateTicketInput) {
 }
 
 export function NewTicketPage({ currentUser }: Props) {
-  const [form, setForm] = useState<CreateTicketInput>(initialForm);
+  const [assistantDraft] = useState(() => readAssistantDraft());
+  const [form, setForm] = useState<CreateTicketInput>(() =>
+    assistantDraft
+      ? {
+          title: assistantDraft.title,
+          description: assistantDraft.description,
+          customer_name: assistantDraft.customer_name,
+          customer_contact: assistantDraft.customer_contact,
+          priority: assistantDraft.priority,
+        }
+      : initialForm,
+  );
+  const [prefilledFromAssistant] = useState(() => Boolean(assistantDraft));
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (assistantDraft) clearAssistantDraft();
+  }, [assistantDraft]);
 
   function updateTextField(
     field: "title" | "description" | "customer_name" | "customer_contact",
@@ -91,9 +111,14 @@ export function NewTicketPage({ currentUser }: Props) {
           <p className="eyebrow">Create ticket</p>
           <h2 id="new-ticket-heading">新建工单</h2>
           <p>创建后状态固定为“待领取”，处理人为空，并同步写入创建历史。</p>
+          {prefilledFromAssistant && (
+            <div className="assistant-prefill-note" role="status">
+              已带入助手整理的草稿，请核对信息后再提交。
+            </div>
+          )}
         </div>
         <a className="button ghost" href="#/tickets">
-          返回队列
+          返回工单中心
         </a>
       </div>
 
@@ -113,7 +138,7 @@ export function NewTicketPage({ currentUser }: Props) {
             <input
               aria-invalid={Boolean(fieldErrors.title)}
               maxLength={200}
-              placeholder="例如：生产环境管理员无法登录"
+              placeholder="例如：Robotaxi 订单重复扣费"
               value={form.title}
               onChange={(event) => updateTextField("title", event.target.value)}
             />
@@ -128,7 +153,7 @@ export function NewTicketPage({ currentUser }: Props) {
             <textarea
               aria-invalid={Boolean(fieldErrors.description)}
               maxLength={10000}
-              placeholder="请记录现象、发生时间、影响范围和已尝试的处理方式"
+              placeholder="请记录订单号、车辆或线路、发生时间、影响范围和已尝试的处理方式"
               rows={7}
               value={form.description}
               onChange={(event) =>
@@ -160,7 +185,7 @@ export function NewTicketPage({ currentUser }: Props) {
               <input
                 aria-invalid={Boolean(fieldErrors.customer_name)}
                 maxLength={100}
-                placeholder="公司或联系人名称"
+                placeholder="客户或合作方名称"
                 value={form.customer_name}
                 onChange={(event) =>
                   updateTextField("customer_name", event.target.value)

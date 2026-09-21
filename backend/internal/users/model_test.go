@@ -4,9 +4,9 @@ import "testing"
 
 func TestParseRoleAcceptsOnlySupportedRoles(t *testing.T) {
 	for _, test := range []struct {
-		name string
+		name  string
 		input string
-		want Role
+		want  Role
 	}{
 		{name: "agent", input: "agent", want: RoleAgent},
 		{name: "supervisor", input: "supervisor", want: RoleSupervisor},

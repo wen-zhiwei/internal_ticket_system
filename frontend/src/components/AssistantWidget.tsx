@@ -7,8 +7,6 @@ import {
   type AssistantDraft,
 } from "../api/assistant";
 import { saveAssistantDraft } from "../domain/assistantDraft";
-import { rememberAssistantMemory } from "../domain/assistantMemory";
-import { createTicket } from "../api/tickets";
 import type { User } from "../api/users";
 import { formatDateTime } from "../domain/tickets";
 
@@ -133,64 +131,16 @@ function TicketDetailCard({ card }: { card: AssistantCard }) {
 
 function TicketDraftCard({
   draft,
-  currentUser,
+  onAction,
 }: {
   draft: AssistantDraft;
-  currentUser: User;
+  onAction: (message: string) => void;
 }) {
   const missingFields = draft.missing_fields ?? [];
-  const [createdTicketId, setCreatedTicketId] = useState<string | null>(null);
-  const [isCreating, setIsCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
 
   function continueToCreate() {
     saveAssistantDraft(draft);
     window.location.hash = "#/new-ticket";
-  }
-
-  async function confirmCreate() {
-    if (missingFields.length > 0 || isCreating) return;
-    setIsCreating(true);
-    setCreateError(null);
-    try {
-      const detail = await createTicket(currentUser.id, {
-        title: draft.title,
-        description: draft.description,
-        customer_name: draft.customer_name,
-        customer_contact: draft.customer_contact,
-        priority: draft.priority,
-      });
-      setCreatedTicketId(detail.ticket.id);
-      rememberAssistantMemory(currentUser.id, { favorite_view: "all" });
-      window.dispatchEvent(new CustomEvent("ticket-created"));
-      window.location.hash = "#/tickets";
-    } catch (error) {
-      setCreateError(
-        error instanceof ApiError ? error.message : "创建失败，请稍后重试。",
-      );
-    } finally {
-      setIsCreating(false);
-    }
-  }
-
-  if (createdTicketId) {
-    return (
-      <div className="assistant-card" data-card-type="ticket-created">
-        <div className="assistant-card-heading">
-          <strong>工单已创建</strong>
-          <span>已写入工单中心</span>
-        </div>
-        <p className="assistant-card-success">
-          工单已保存，编号：{createdTicketId}
-        </p>
-        <a
-          className="assistant-detail-link"
-          href={`#/tickets/${createdTicketId}`}
-        >
-          查看工单详情
-        </a>
-      </div>
-    );
   }
 
   return (
@@ -222,19 +172,17 @@ function TicketDraftCard({
           还缺少：{missingFields.map(missingFieldLabel).join("、")}。
         </p>
       )}
-      {createError && <p className="assistant-card-warning">{createError}</p>}
       <div className="assistant-card-actions">
         <button
           className="button primary assistant-card-action"
           type="button"
-          disabled={isCreating}
-          onClick={missingFields.length > 0 ? continueToCreate : confirmCreate}
+          onClick={
+            missingFields.length > 0
+              ? continueToCreate
+              : () => onAction("请按上面的完整草稿准备创建工单")
+          }
         >
-          {isCreating
-            ? "正在创建…"
-            : missingFields.length > 0
-              ? "补充工单信息"
-              : "确认创建工单"}
+          {missingFields.length > 0 ? "补充工单信息" : "准备创建工单"}
         </button>
         {missingFields.length === 0 && (
           <button
@@ -250,27 +198,127 @@ function TicketDraftCard({
   );
 }
 
-function AssistantCardView({
+function UserListCard({ card }: { card: AssistantCard }) {
+  const users = card.users ?? [];
+  return (
+    <div className="assistant-card" data-card-type="user_list">
+      <div className="assistant-card-heading">
+        <strong>{card.title}</strong>
+        <span>{users.length} 人</span>
+      </div>
+      {users.length === 0 ? (
+        <p className="assistant-card-empty">没有找到符合条件的客服。</p>
+      ) : (
+        <div className="assistant-ticket-list">
+          {users.map((user) => (
+            <div className="assistant-ticket-item" key={user.id}>
+              <span>
+                <strong>{user.name}</strong>
+                <small>{user.team || "未设置团队"}</small>
+              </span>
+              <em>{user.role === "supervisor" ? "主管" : "客服"}</em>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PendingActionCard({
   card,
-  currentUser,
+  onAction,
 }: {
   card: AssistantCard;
-  currentUser: User;
+  onAction: (message: string) => void;
+}) {
+  const action = card.action;
+  if (!action) return null;
+  const pending = action.status === "pending";
+  return (
+    <div className="assistant-card" data-card-type="pending_action">
+      <div className="assistant-card-heading">
+        <strong>{card.title}</strong>
+        <span>
+          {pending
+            ? "待确认"
+            : action.status === "completed"
+              ? "已完成"
+              : "已处理"}
+        </span>
+      </div>
+      <p className="assistant-card-success">{action.summary}</p>
+      {(action.items ?? []).length > 0 && (
+        <div className="assistant-ticket-list">
+          {(action.items ?? []).slice(0, 5).map((ticket) => (
+            <a
+              className="assistant-ticket-item"
+              href={`#/tickets/${ticket.id}`}
+              key={ticket.id}
+            >
+              <span>
+                <strong>{ticket.title}</strong>
+                <small>
+                  {ticket.customer_name} · {ticketStatusLabel(ticket.status)}
+                </small>
+              </span>
+              <em>{priorityLabel(ticket.priority)}</em>
+            </a>
+          ))}
+          {(action.items ?? []).length > 5 && (
+            <p className="assistant-card-empty">
+              另外 {(action.items ?? []).length - 5} 张工单
+            </p>
+          )}
+        </div>
+      )}
+      {pending && (
+        <div className="assistant-card-actions">
+          <button
+            className="button primary assistant-card-action"
+            type="button"
+            onClick={() => onAction(`确认执行操作 ${action.id}`)}
+          >
+            确认执行
+          </button>
+          <button
+            className="button ghost assistant-card-action"
+            type="button"
+            onClick={() => onAction(`取消操作 ${action.id}`)}
+          >
+            取消
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AssistantCardView({
+  card,
+  onAction,
+}: {
+  card: AssistantCard;
+  onAction: (message: string) => void;
 }) {
   if (card.type === "ticket_list") return <TicketListCard card={card} />;
   if (card.type === "ticket_detail") return <TicketDetailCard card={card} />;
+  if (card.type === "user_list") return <UserListCard card={card} />;
   if (card.type === "ticket_draft" && card.draft) {
-    return <TicketDraftCard draft={card.draft} currentUser={currentUser} />;
+    return <TicketDraftCard draft={card.draft} onAction={onAction} />;
+  }
+  if (card.type === "pending_action" && card.action) {
+    return <PendingActionCard card={card} onAction={onAction} />;
   }
   return null;
 }
 
 function assistantErrorMessage(error: ApiError) {
   if (error.code === "assistant_not_configured") {
-    return "助手还没有连接模型服务，请在后端 .env 配置模型后重启 Go API。";
+    return "助手服务还没有启动，请先启动 Python 助手服务和 Go API。";
   }
   if (error.code === "assistant_unavailable") {
-    return "模型服务暂时不可用，请检查后端配置或稍后重试。";
+    return "助手服务暂时不可用，请检查 Python 助手服务和模型配置。";
   }
   return error.message;
 }
@@ -345,9 +393,8 @@ export function AssistantConversation({
     setMessage("");
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const trimmed = message.trim();
+  async function sendMessage(value: string) {
+    const trimmed = value.trim();
     if (!trimmed || isSending || trimmed.length > MAX_MESSAGE_LENGTH) return;
 
     const userEntry: ChatEntry = {
@@ -398,6 +445,11 @@ export function AssistantConversation({
     }
   }
 
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void sendMessage(message);
+  }
+
   return (
     <section
       className={`assistant-panel ${embedded ? "assistant-panel-embedded" : ""}`}
@@ -435,7 +487,10 @@ export function AssistantConversation({
               {entry.content}
             </div>
             {entry.card && (
-              <AssistantCardView card={entry.card} currentUser={currentUser} />
+              <AssistantCardView
+                card={entry.card}
+                onAction={(value) => void sendMessage(value)}
+              />
             )}
           </div>
         ))}

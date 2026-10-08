@@ -1,5 +1,6 @@
 import { apiRequest } from "./client";
 import type { Ticket, TicketDetail } from "./tickets";
+import type { User } from "./users";
 
 export type AssistantDraft = {
   title: string;
@@ -10,12 +11,33 @@ export type AssistantDraft = {
   missing_fields?: string[];
 };
 
+export type AssistantPendingAction = {
+  id: string;
+  action_type:
+    | "create_ticket"
+    | "update_ticket"
+    | "assign_ticket"
+    | "change_status"
+    | "bulk_change_status";
+  summary: string;
+  status: "pending" | "executing" | "completed" | "cancelled" | "failed";
+  items?: Ticket[];
+  expires_at?: string;
+};
+
 export type AssistantCard = {
-  type: "ticket_list" | "ticket_detail" | "ticket_draft";
+  type:
+    | "ticket_list"
+    | "ticket_detail"
+    | "ticket_draft"
+    | "user_list"
+    | "pending_action";
   title: string;
   items?: Ticket[];
   ticket?: TicketDetail;
   draft?: AssistantDraft;
+  action?: AssistantPendingAction;
+  users?: User[];
 };
 
 export type AssistantResponse = {

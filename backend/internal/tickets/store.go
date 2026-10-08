@@ -160,6 +160,12 @@ func listConditions(actor users.User, filter ListFilter) ([]string, []any) {
 	if filter.Search != "" {
 		add("(t.title ILIKE ? OR t.customer_name ILIKE ?)", "%"+filter.Search+"%")
 	}
+	if filter.CreatedFrom != nil {
+		add("t.created_at >= ?", *filter.CreatedFrom)
+	}
+	if filter.CreatedTo != nil {
+		add("t.created_at <= ?", *filter.CreatedTo)
+	}
 	return where, args
 }
 

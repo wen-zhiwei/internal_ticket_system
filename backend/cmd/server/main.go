@@ -30,11 +30,8 @@ func main() {
 	userStore := users.NewPGStore(pool)
 	ticketStore := tickets.NewPGStore(pool)
 	var assistantService httpapi.AssistantService
-	if cfg.LLMBaseURL != "" && cfg.LLMModel != "" {
-		assistantService = assistant.NewService(
-			assistant.NewOpenAIClient(cfg.LLMBaseURL, cfg.LLMAPIKey, cfg.LLMModel, nil),
-			ticketStore,
-		)
+	if cfg.AssistantServiceURL != "" {
+		assistantService = assistant.NewClient(cfg.AssistantServiceURL, cfg.AssistantServiceToken, nil)
 	}
 
 	conversationStore := assistant.NewPGConversationStore(pool)

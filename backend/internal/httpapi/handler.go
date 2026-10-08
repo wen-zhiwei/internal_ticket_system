@@ -19,7 +19,7 @@ type UserStore interface {
 }
 
 type AssistantService interface {
-	Chat(context.Context, users.User, string) (assistant.Response, error)
+	Chat(context.Context, users.User, string, string) (assistant.Response, error)
 }
 
 type AssistantConversationStore interface {

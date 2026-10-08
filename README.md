@@ -9,11 +9,13 @@
 ## 技术栈
 
 - 前端：React + TypeScript + Vite
-- 后端：Go `net/http`
+- 业务后端：Go `net/http`，负责权限、状态机、事务和业务 API
+- AI 工具层：Python + LangChain
+- AI 流程层：LangGraph，多轮状态保存到 PostgreSQL
 - 数据库：PostgreSQL 16
-- 数据访问：`github.com/jackc/pgx/v5`
-- 测试：Go `testing`、Vitest
-- 质量工具：ESLint、Prettier、`go vet`、`gofmt`
+- 数据访问：Go 使用 `github.com/jackc/pgx/v5`，Python 使用 `psycopg`
+- 测试：Go `testing`、Pytest、Vitest
+- 质量工具：ESLint、Prettier、Ruff、`go vet`、`gofmt`
 - 迁移：可重复执行的 SQL 文件，位于 `db/migrations/`
 
 ## 目录结构
@@ -26,6 +28,11 @@
 ├── Makefile
 ├── .env.example
 ├── compose.yaml
+├── assistant-service/         # LangChain 工具和 LangGraph 多轮流程
+│   ├── main.py
+│   ├── graph.py
+│   ├── tools.py
+│   └── tests/
 ├── backend/
 │   ├── cmd/server/main.go
 │   ├── internal/config/
@@ -147,7 +154,7 @@ AI 工单助手接口。请求必须携带 `X-User-ID`，请求体为：
 }
 ```
 
-当前支持工单查询、工单详情和自然语言整理工单草稿。完整草稿可以在助手卡片中点击“确认创建工单”，前端会调用已有的 `POST /api/tickets`，真实写入 `tickets` 和 `ticket_events`；信息不完整时先进入表单补齐。模型不会直接写数据库。未配置模型服务时返回 `503 assistant_not_configured`，不返回假数据。
+Go API 会先从 PostgreSQL 读取当前用户身份，再把消息和 `conversation_id` 发送给 Python 助手服务。LangGraph 负责多轮状态，LangChain 向模型提供 10 个结构化工具。查询结果、草稿和待确认操作以卡片返回；所有工单写操作最终仍调用 Go API，由 Go 强制校验权限、状态机和事务。未启动助手服务或未配置模型时返回 `503`，不返回假数据。
 
 ### `GET /api/health`
 
@@ -238,16 +245,18 @@ cp .env.example .env
 ```
 
 
-| 变量                  | 默认值                                                                                                              | 用途                                                          |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `API_ADDR`          | `:8080`                                                                                                          | Go API 监听地址                                                 |
-| `DATABASE_URL`      | `postgres://internal_ticket_system:internal_ticket_system@localhost:5432/internal_ticket_system?sslmode=disable` | PostgreSQL 连接串                                              |
-| `WEB_ORIGIN`        | `http://localhost:5173`                                                                                          | API 允许的前端来源                                                 |
-| `VITE_API_BASE_URL` | `/api`                                                                                                           | 前端 API 基地址；Vite 开发环境会代理到 Go API                             |
-| `LLM_BASE_URL`      | 空                                                                                                                | OpenAI-compatible 模型服务地址；Ollama 可填 `http://localhost:11434` |
-| `LLM_API_KEY`       | 空                                                                                                                | 模型服务密钥，只在后端读取                                               |
-| `LLM_MODEL`         | 空                                                                                                                | 模型名称                                                        |
-
+| 变量 | 默认值 | 用途 |
+| --- | --- | --- |
+| `API_ADDR` | `:8080` | Go API 监听地址 |
+| `DATABASE_URL` | 本地 PostgreSQL | Go 业务数据、LangGraph 会话状态和待确认操作 |
+| `WEB_ORIGIN` | `http://localhost:5173` | Go API 允许的前端来源 |
+| `ASSISTANT_SERVICE_URL` | `http://127.0.0.1:8090` | Go 调用 Python 助手服务的地址 |
+| `ASSISTANT_SERVICE_TOKEN` | 空 | Go 与 Python 服务间的可选鉴权 Token |
+| `VITE_API_BASE_URL` | `/api` | React 调用 Go API 的地址 |
+| `GO_API_BASE_URL` | `http://127.0.0.1:8080/api` | Python 工具调用 Go 业务 API 的地址 |
+| `LLM_BASE_URL` | 空 | OpenAI-compatible 模型服务地址 |
+| `LLM_API_KEY` | 空 | 只由 Python 助手服务读取的模型密钥 |
+| `LLM_MODEL` | 空 | 模型名称 |
 
 不要提交 `.env`、密码、token 或其他秘密；只提交 `.env.example`。
 
@@ -298,28 +307,29 @@ make db-migrate
 4. 打开“订单状态未更新”，查看从创建、分配、解决到关闭的完整流程。
 5. 再切换到“王芳”或“李娜”，查看不同客服看到的待处理范围。
 
-### 3. 启动 API 和前端
+### 3. 启动 Go、Python 助手和前端
 
-如果已经在项目根目录配置了本地 `.env`，`make api` 和 `make frontend` 会自动读取它。`.env` 已被 `.gitignore` 忽略，不会提交到 Git。
-
-分别在两个终端执行：
+如果项目根目录有本地 `.env`，三个启动命令都会读取它。分别打开三个终端：
 
 ```bash
 make api
+make assistant
 make frontend
 ```
 
-最简单的 StepFun 配置方式：复制 `.env.example` 为 `.env`，填写 `LLM_BASE_URL`、`LLM_API_KEY` 和 `LLM_MODEL`。API Key 只放在本机 `.env`，不要写进代码或提交仓库。
+调用链：
+
+```text
+React -> Go API -> Python LangGraph -> LangChain Tool -> Go 工单 API -> PostgreSQL
+```
+
+- Go 是唯一的工单业务入口，负责权限、状态机、事务和操作历史。
+- Python 不直接修改工单表，只保存 LangGraph checkpoint 和 AI 待确认操作。
+- React 负责消息、工单卡片、草稿卡片和确认按钮。
 
 ### 给别人使用助手：最简单的三种方式
 
-浏览器不会直接请求模型，调用链是：
-
-```text
-浏览器 -> Go API -> 模型服务
-```
-
-所以 API Key 只需要写在运行 Go API 的电脑上的 `.env`，不需要写进前端。
+浏览器和 Go 都不直接读取模型密钥。API Key 只写在运行 Python 助手服务的电脑上的 `.env`。
 
 #### 方式一：使用自己的云端 API Key（推荐）
 
@@ -327,48 +337,38 @@ make frontend
 cp .env.example .env
 ```
 
-编辑 `.env`，填写自己模型服务提供商的配置：
+编辑 `.env`：
 
 ```env
 LLM_BASE_URL=https://api.stepfun.com/step_plan/v1
 LLM_API_KEY=填写你自己的密钥
-LLM_MODEL=step-3.7-flash
+LLM_MODEL=填写服务支持的模型名
 ```
 
-然后重启 API：
+然后启动或重启：
 
 ```bash
-make api
+make assistant
 ```
 
-打开页面后，右下角点击“助手”即可使用。没有配置这三项时，工单页面仍然可以使用，只是助手不会返回模型回答。
-
-#### 方式二：使用 Ollama（完全本地，不需要云端 Key）
-
-先安装并启动 Ollama，再下载一个模型：
+#### 方式二：使用 Ollama（本地运行，不需要云端 Key）
 
 ```bash
 ollama serve
 ollama pull qwen2.5:7b
 ```
 
-`.env` 改成：
+`.env`：
 
 ```env
-LLM_BASE_URL=http://localhost:11434
-LLM_API_KEY=
+LLM_BASE_URL=http://localhost:11434/v1
+LLM_API_KEY=ollama
 LLM_MODEL=qwen2.5:7b
 ```
 
-然后重启：
-
-```bash
-make api
-```
+模型必须支持工具调用。配置后执行 `make assistant`。
 
 #### 方式三：其他 OpenAI 兼容服务
-
-只需要替换下面三项：
 
 ```env
 LLM_BASE_URL=服务地址
@@ -376,9 +376,7 @@ LLM_API_KEY=服务密钥
 LLM_MODEL=模型名称
 ```
 
-服务需要支持 OpenAI Chat Completions 和工具调用。当前助手会用它来查询工单、查看详情、整理自动驾驶客服工单草稿。完整草稿由用户确认后创建，不让模型绕过后端业务接口。
-
-> 分享项目时只分享 `.env.example`，不要分享 `.env`。如果通过局域网访问前端，优先使用默认的同源 `/api` 代理；如果不是通过 Vite 代理，再把 `VITE_API_BASE_URL` 配成实际 Go API 地址。
+> 分享项目时只分享 `.env.example`，不要分享 `.env`。
 
 浏览器打开 [http://localhost:5173](http://localhost:5173)。当前页面会从真实 Go API 加载数据，支持当前用户切换、统计概览、目录栏收缩、工单筛选分页、创建工单、领取/分配/改派、状态流转、评论和详情历史查看。
 
@@ -391,58 +389,49 @@ make db-down
 ## 开发与验证命令
 
 ```bash
-make format        # gofmt + 前端 Prettier
-make format-check  # 检查格式
-make lint          # ESLint + go vet
-make test          # Go 测试 + Vitest
-make build         # Go 构建 + 前端生产构建
+make format
+make format-check
+make lint
+make test
+make build
 ```
 
-前端也可以直接执行：
+这些命令会一起检查 React、Go 和 Python 助手服务。
 
-```bash
-cd frontend
-npm run format:check
-npm run lint
-npm test -- --run
-npm run build
-```
+## AI 助手架构、多轮与 10 个工具
 
-后端可直接执行：
-
-```bash
-cd backend
-gofmt -w ./...
-go test ./...
-go vet ./...
-go build ./...
-```
-
-## AI 助手规划与简单记忆
-
-需求 3「自然语言整理工单草稿」和需求 4「右下角对话助手」作为一个统一助手开发。最小链路是：
+需求 3“自然语言整理工单草稿”和需求 4“我的助手”仍是一个统一功能，职责拆分为：
 
 ```text
-前端助手 -> Go Assistant API -> 大模型选择结构化 Tool
-           -> TicketService -> 权限/状态机/事务 -> PostgreSQL
+Go = 工单业务核心
+LangChain = 10 个结构化工具封装
+LangGraph = 多轮 AI 流程编排
+PostgreSQL = 业务数据、会话状态、历史消息和待确认操作
+React = 页面、卡片和确认交互
 ```
 
-- `prepare_create_ticket` 只生成草稿；用户确认后才调用已有创建工单业务。
-- 查询、草稿、待确认操作都返回结构化结果，前端按文字、列表卡片、草稿卡片或确认卡片展示。
-- 不让大模型执行任意 CLI；HTTP API、AI Tool 和未来 CLI 都复用同一个业务服务。
-- 暂不增加单独意图分类模型；Go 每次请求模型时传入当前可用工具定义。
-- 第一批工具：`search_tickets`、`get_ticket_detail`、`prepare_create_ticket`、`prepare_update_ticket`、`prepare_change_status`、`prepare_bulk_action`、`confirm_pending_action`、`cancel_pending_action`。
-
-第一版只保存轻量用户偏好，不保存敏感业务内容：
+同一用户、同一会话使用：
 
 ```text
-default_date_range = "this_week"
-timezone = "Asia/Shanghai"
-favorite_view = "我的待处理"
-preferred_reply_style = "简洁"
+thread_id = user_id + ":" + conversation_id
 ```
 
-当前先用浏览器 localStorage 保存，后续需要多设备、审计或团队共享时再迁移到 PostgreSQL。详细方案和边界见 `docs/ai/2026-09-20-feature-assistant-plan.md`。
+10 个工具：
+
+1. `search_tickets`：查询工单并保存本轮候选顺序。
+2. `get_ticket_detail`：查看工单详情。
+3. `search_users`：按姓名或团队查询可分配的客服。
+4. `prepare_create_ticket`：整理新工单；信息完整后生成待确认创建操作。
+5. `prepare_update_ticket`：准备编辑工单。
+6. `prepare_assign_ticket`：准备分配或改派工单。
+7. `prepare_change_status`：准备修改单张工单状态。
+8. `prepare_bulk_action`：按明确清单或筛选条件准备批量操作。
+9. `confirm_pending_action`：用户确认后执行。
+10. `cancel_pending_action`：取消待确认操作。
+
+查询工具可以直接执行。创建、编辑、状态修改和批量修改必须先展示草稿或确认卡片。模型不能执行任意 CLI，也不能绕过 Go API 直接改工单表。
+
+简单偏好仍按用户保存在浏览器 `localStorage`；业务会话历史、LangGraph checkpoint、最近工单候选、最近创建工单和待确认操作保存在 PostgreSQL。
 
 ## 已完成与未完成
 
@@ -471,7 +460,7 @@ preferred_reply_style = "简洁"
 - [ ] 完整登录、token、刷新和防止演示用户 ID 被冒用
 - [ ] 后台 SLA 定时任务、通知、附件和实时推送
 - [x] 自动驾驶客服助手浮窗、工单查询卡片、草稿确认创建和创建后回到工单中心
-- [ ] 助手服务端多轮会话、批量操作和幂等防重
+- [x] LangGraph 多轮会话、10 个工具、候选工单引用、创建/分配/批量确认操作和重复确认防重
 - [ ] 高级标签/批量操作
 - [ ] PostgreSQL 集成测试需要 Go 与 PostgreSQL 运行环境；已提供可选的并发领取测试，设置 `TEST_DATABASE_URL` 后执行
 

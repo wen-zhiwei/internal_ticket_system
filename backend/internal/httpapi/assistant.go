@@ -41,15 +41,30 @@ func (h *Handler) assistantChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response, err := h.assistant.Chat(r.Context(), actor, input.Message)
+	if input.ConversationID != "" && h.assistantConversations != nil {
+		if _, err := h.assistantConversations.Get(r.Context(), actor, input.ConversationID); err != nil {
+			if errors.Is(err, assistant.ErrConversationNotFound) {
+				writeError(w, http.StatusNotFound, "assistant_conversation_not_found", "历史会话不存在")
+				return
+			}
+			writeError(w, http.StatusServiceUnavailable, "assistant_history_unavailable", "暂时无法读取会话记录")
+			return
+		}
+	}
+
+	response, err := h.assistant.Chat(r.Context(), actor, input.ConversationID, input.Message)
 	if err != nil {
 		status, code, message := assistantError(err)
 		writeError(w, status, code, message)
 		return
 	}
 	if h.assistantConversations != nil {
+		conversationID := strings.TrimSpace(response.ConversationID)
+		if conversationID == "" {
+			conversationID = input.ConversationID
+		}
 		conversation, err := h.assistantConversations.AppendExchange(
-			r.Context(), actor, input.ConversationID, input.Message, response,
+			r.Context(), actor, conversationID, input.Message, response,
 		)
 		if err != nil {
 			if errors.Is(err, assistant.ErrConversationNotFound) {
@@ -110,6 +125,8 @@ func assistantError(err error) (int, string, string) {
 		return http.StatusNotFound, "ticket_not_found", "工单不存在"
 	case errors.Is(err, tickets.ErrForbidden):
 		return http.StatusForbidden, "ticket_access_denied", "无权查看该工单"
+	case errors.Is(err, assistant.ErrConversationNotFound):
+		return http.StatusNotFound, "assistant_conversation_not_found", "历史会话不存在"
 	case errors.Is(err, assistant.ErrUnavailable):
 		return http.StatusServiceUnavailable, "assistant_unavailable", "AI 助手暂时不可用，请稍后重试"
 	default:

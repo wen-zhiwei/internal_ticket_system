@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"internal_ticket_system/backend/internal/tickets"
 	"internal_ticket_system/backend/internal/users"
@@ -436,5 +437,50 @@ func TestListTicketsSupportsPendingAndOverdueFilters(t *testing.T) {
 	}
 	if !store.lastFilter.Pending || !store.lastFilter.Overdue {
 		t.Fatalf("expected pending and overdue filters, got %#v", store.lastFilter)
+	}
+}
+
+func TestListTicketsParsesCreatedTimeRange(t *testing.T) {
+	store := &fakeTicketStore{}
+	handler := NewHandler("http://localhost:5173", fakeUserStore{items: testUsers()}, store)
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/tickets?created_from=2026-09-28T00%3A00%3A00%2B08%3A00&created_to=2026-09-29T12%3A00%3A00%2B08%3A00",
+		nil,
+	)
+	request.Header.Set("X-User-ID", "agent-001")
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if store.lastFilter.CreatedFrom == nil || store.lastFilter.CreatedTo == nil {
+		t.Fatalf("expected created time range, got %#v", store.lastFilter)
+	}
+	if got := store.lastFilter.CreatedFrom.Format(time.RFC3339); got != "2026-09-28T00:00:00+08:00" {
+		t.Fatalf("unexpected created_from: %s", got)
+	}
+}
+
+func TestListTicketsRejectsInvalidCreatedTimeRange(t *testing.T) {
+	store := &fakeTicketStore{}
+	handler := NewHandler("http://localhost:5173", fakeUserStore{items: testUsers()}, store)
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/tickets?created_from=2026-09-30T00%3A00%3A00Z&created_to=2026-09-29T00%3A00%3A00Z",
+		nil,
+	)
+	request.Header.Set("X-User-ID", "agent-001")
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", response.Code, response.Body.String())
+	}
+	if store.listCalls != 0 {
+		t.Fatal("ticket store must not be called for an invalid time range")
 	}
 }

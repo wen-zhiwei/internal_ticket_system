@@ -156,6 +156,8 @@ type ListFilter struct {
 	PageSize      int
 	SortBy        SortField
 	SortDirection SortDirection
+	CreatedFrom   *time.Time
+	CreatedTo     *time.Time
 }
 
 type ListResult struct {

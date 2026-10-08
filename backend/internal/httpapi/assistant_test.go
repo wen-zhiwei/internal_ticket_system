@@ -17,7 +17,7 @@ type fakeAssistantService struct {
 	result  assistant.Response
 }
 
-func (s *fakeAssistantService) Chat(_ context.Context, actor users.User, message string) (assistant.Response, error) {
+func (s *fakeAssistantService) Chat(_ context.Context, actor users.User, _ string, message string) (assistant.Response, error) {
 	s.actor = actor
 	s.message = message
 	return s.result, nil

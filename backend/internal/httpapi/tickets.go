@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"internal_ticket_system/backend/internal/tickets"
 	"internal_ticket_system/backend/internal/users"
@@ -163,6 +164,24 @@ func parseTicketListFilter(r *http.Request) (tickets.ListFilter, error) {
 			return tickets.ListFilter{}, errors.New("overdue 必须是 true 或 false")
 		}
 		filter.Overdue = overdue
+	}
+
+	if rawCreatedFrom := strings.TrimSpace(query.Get("created_from")); rawCreatedFrom != "" {
+		createdFrom, parseErr := time.Parse(time.RFC3339, rawCreatedFrom)
+		if parseErr != nil {
+			return tickets.ListFilter{}, errors.New("created_from 必须是 RFC3339 时间")
+		}
+		filter.CreatedFrom = &createdFrom
+	}
+	if rawCreatedTo := strings.TrimSpace(query.Get("created_to")); rawCreatedTo != "" {
+		createdTo, parseErr := time.Parse(time.RFC3339, rawCreatedTo)
+		if parseErr != nil {
+			return tickets.ListFilter{}, errors.New("created_to 必须是 RFC3339 时间")
+		}
+		filter.CreatedTo = &createdTo
+	}
+	if filter.CreatedFrom != nil && filter.CreatedTo != nil && filter.CreatedFrom.After(*filter.CreatedTo) {
+		return tickets.ListFilter{}, errors.New("created_from 不能晚于 created_to")
 	}
 
 	if assigneeID := strings.TrimSpace(query.Get("assignee_id")); assigneeID != "" {

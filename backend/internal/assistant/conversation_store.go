@@ -39,8 +39,6 @@ type Conversation struct {
 	Messages []ConversationMessage `json:"messages"`
 }
 
-var ErrConversationNotFound = errors.New("assistant conversation not found")
-
 type ConversationStore interface {
 	List(context.Context, users.User, int) ([]ConversationSummary, error)
 	Get(context.Context, users.User, string) (Conversation, error)
@@ -180,9 +178,13 @@ func (s *PGConversationStore) AppendExchange(ctx context.Context, actor users.Us
 			FOR UPDATE
 		`, conversationID, actor.ID).Scan(&lockedID)
 		if errors.Is(err, pgx.ErrNoRows) {
-			return Conversation{}, ErrConversationNotFound
-		}
-		if err != nil {
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO assistant_conversations (id, user_id, title)
+				VALUES ($1, $2, $3)
+			`, conversationID, actor.ID, conversationTitle(userMessage)); err != nil {
+				return Conversation{}, err
+			}
+		} else if err != nil {
 			return Conversation{}, err
 		}
 	}
